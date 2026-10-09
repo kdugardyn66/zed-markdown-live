@@ -1,0 +1,7 @@
+/target
+/server/target
+*.wasm
+node_modules/
+.DS_Store
+/tests/out/
+__pycache__/

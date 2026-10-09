@@ -165,7 +165,7 @@ impl Jobs {
     }
 }
 
-/// Runs a job right away (CLI `render` / exports, where waiting is fine).
+/// Runs a job right away (CLI `render`, where waiting is fine).
 pub fn run_now(make: impl FnOnce() -> JobFn) -> Result<String, String> {
     (make())()
 }

@@ -266,9 +266,22 @@ except Exception:
 __ml_g = {"__name__": "__main__"}
 __ml_file = __ml_sys.argv[1]
 __ml_sys.argv = __ml_sys.argv[1:]
+with open(__ml_file, encoding="utf-8") as __ml_f:
+    __ml_src = __ml_f.read()
+import linecache as __ml_lc
+# lets tracebacks show the lines of the chunk
+__ml_lc.cache["chunk"] = (len(__ml_src), None, __ml_src.splitlines(True), "chunk")
 try:
-    with open(__ml_file, encoding="utf-8") as __ml_f:
-        exec(compile(__ml_f.read(), "chunk", "exec"), __ml_g)
+    try:
+        exec(compile(__ml_src, "chunk", "exec"), __ml_g)
+    except SystemExit:
+        raise
+    except BaseException as __ml_e:
+        # report the error without this wrapper's own frames
+        import traceback as __ml_tb
+        __ml_sys.stdout.flush()
+        __ml_tb.print_exception(type(__ml_e), __ml_e, __ml_e.__traceback__.tb_next)
+        __ml_sys.exit(1)
 finally:
     if __ml_flush_figs:
         __ml_flush_figs()

@@ -19,8 +19,8 @@ see `scripts/vendor.sh` for the exact versions):
 | [Plotly.js](https://github.com/plotly/plotly.js) | interactive charts | MIT |
 | [reveal.js](https://github.com/hakimel/reveal.js) | slides | MIT (theme fonts: SIL OFL) |
 
-Exports call external tools when installed: pandoc (GPL-2.0+), LibreOffice (MPL-2.0),
-Chrome/Chromium, ffmpeg. They are not bundled.
+External tools are used when installed: Java + PlantUML, ffmpeg, Chrome/Chromium
+(preview window). They are not bundled.
 
 Rust crates (compiled in): [comrak](https://github.com/kivikakk/comrak) (BSD-2-Clause),
 serde / serde_json, ureq, flate2, libc (MIT or Apache-2.0).

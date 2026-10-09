@@ -73,16 +73,6 @@ pub struct Settings {
     pub code_timeout: u64,
     /// Python interpreter. Empty = `.venv/bin/python` in the workspace, else `python3`.
     pub python: String,
-    /// Where exports go: empty = next to the Markdown file; relative to it, or absolute.
-    pub export_dir: String,
-    /// pandoc (docx/odt/pptx/odp exports). Empty = autodetect.
-    pub pandoc: String,
-    /// Chrome/Chromium for PDF exports. Empty = autodetect.
-    pub chrome: String,
-    /// Optional pandoc reference documents (your styles / slide master).
-    pub reference_docx: String,
-    pub reference_odt: String,
-    pub reference_pptx: String,
     /// reveal.js theme when the front matter doesn't set one: `auto` (white/black by preview theme), `white`, `league`, …
     pub slide_theme: String,
 }
@@ -113,12 +103,6 @@ impl Default for Settings {
             enable_script_execution: false,
             code_timeout: 30,
             python: String::new(),
-            export_dir: String::new(),
-            pandoc: String::new(),
-            chrome: String::new(),
-            reference_docx: String::new(),
-            reference_odt: String::new(),
-            reference_pptx: String::new(),
             slide_theme: "auto".into(),
         }
     }
@@ -216,12 +200,6 @@ struct SettingsShadow {
     enable_script_execution: bool,
     code_timeout: u64,
     python: String,
-    export_dir: String,
-    pandoc: String,
-    chrome: String,
-    reference_docx: String,
-    reference_odt: String,
-    reference_pptx: String,
     slide_theme: String,
 }
 
@@ -250,12 +228,6 @@ impl From<&Settings> for SettingsShadow {
             enable_script_execution: s.enable_script_execution,
             code_timeout: s.code_timeout,
             python: s.python.clone(),
-            export_dir: s.export_dir.clone(),
-            pandoc: s.pandoc.clone(),
-            chrome: s.chrome.clone(),
-            reference_docx: s.reference_docx.clone(),
-            reference_odt: s.reference_odt.clone(),
-            reference_pptx: s.reference_pptx.clone(),
             slide_theme: s.slide_theme.clone(),
         }
     }

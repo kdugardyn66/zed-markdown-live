@@ -448,7 +448,7 @@
     else if (ML.onKey) ML.onKey(e);
   });
 
-  /** Runs `fn` with the page temporarily in theme `t` (exports are always light). */
+  /** Runs `fn` with the page temporarily in theme `t` (printing is always light). */
   ML.withTheme = async (t, fn) => {
     if (theme() === t) return fn();
     const prev = state.themePref;
@@ -461,7 +461,7 @@
   applyTheme();
   applyZoom();
   renderToc();
-  // Later versions add their own scripts (exports, slides…) before polling starts.
+  // Later versions add their own scripts (slides, printing…) before polling starts.
   (window.ML_EXTRA || []).forEach((f) => { try { f(ML); } catch (e) { console.error(e); } });
   // Start after every script of the page ran (plugins.js registers more renderers).
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', poll); else poll();

@@ -167,7 +167,7 @@ pub fn which(name: &str) -> Option<PathBuf> {
 }
 
 /// Finds a Chromium-based browser (Chromium, Chrome, Brave, Edge). Used for the
-/// default chromeless preview window and for PDF export.
+/// default chromeless preview window.
 pub fn find_chromium() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("MARKDOWN_LIVE_CHROME").map(PathBuf::from).filter(|p| p.is_file()) {
         return Some(p);

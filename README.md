@@ -26,15 +26,16 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | **0.2.0** | All extra diagrams, Chart.js, Python code with graphics, MathJax, chemistry (mhchem) |
 | **0.3.0** | Images (bmp, jpeg, png, svg, heic…) and videos (mp4, mkv, webm, mov, avi) |
 | **0.4.0** | Slides (`<!-- slide -->`, live reveal.js view) and exports: pdf, docx, odt, html, pptx, odp, slide pdf/html |
+| **0.5.0** | Exports replaced by printing (document or one slide per page); shorter Python error messages |
 
-This is **0.4.0**.
+This is **0.5.0**.
 
 ## Install
 
 You need Rust via [rustup](https://rustup.rs) (Zed compiles dev extensions with it).
 
 ```bash
-./setup.sh            # builds + installs `markdown-zed`, adds the Option-M / Option-Shift-N / Option-Shift-E keys to Zed
+./setup.sh            # builds + installs `markdown-zed`, adds the Option-M / Option-Shift-N / Option-Shift-P keys to Zed
 ```
 
 Then in Zed: **Cmd-Shift-P → "zed: install dev extension"** → choose this folder.
@@ -140,7 +141,7 @@ presentation:          # optional reveal.js options (MPE style)
 ---
 # First slide
 
-<aside class="notes">Speaker notes (also exported to PowerPoint).</aside>
+<aside class="notes">Speaker notes (shown in the document view, never printed).</aside>
 
 <!-- slide -->
 ## Second slide
@@ -155,35 +156,21 @@ Below the second slide.
 Press **P** (or the screen icon) to switch the preview to a live **reveal.js**
 slide view: it updates as you type, and moving the cursor in Zed moves to that slide.
 Everything renders inside slides: diagrams, math, charts, CSV tables, code, pictures.
-Without markers, exports split slides at `#` / `##` headings.
+Without markers, slides split at `#` / `##` headings.
 
-## Export (0.4.0)
+## Print
 
-Press **E** (or the download icon) in the preview, run a Zed task
-("task: spawn" → "MarkDown Live: Export …", **Option-Shift-E** = PDF), use Cmd-. →
-"MarkDown Live: Export …", or the CLI: `markdown-zed export notes.md -f docx`.
+Press **Cmd-P** (Ctrl-P) or the printer icon in the preview, press **Option-Shift-P** in
+Zed, use Cmd-. → "MarkDown Live: Print", or the CLI: `markdown-zed print notes.md`.
+The browser's print dialog opens; choose a printer, or **Save as PDF** for a PDF file.
 
-| Format | | Made with | Notes |
-|---|---|---|---|
-| Document | **PDF** | Chrome/Chromium (headless) | exactly what the preview shows; slide markers become page breaks |
-| | **Word (.docx)** | pandoc | real Word equations (mhchem too), diagrams as pictures, tables, code |
-| | **OpenDocument (.odt)** | pandoc | equations as LibreOffice formulas |
-| | **HTML** | — | one self-contained file (pictures, fonts, diagrams inlined) |
-| Slides | **PowerPoint (.pptx)** | pandoc | one slide per `<!-- slide -->`, speaker notes, two columns for text + picture |
-| | **Impress (.odp)** | pandoc + LibreOffice | equations as pictures (Impress can't show PowerPoint equations) |
-| | **PDF** | Chrome/Chromium | one page per slide, reveal.js theme |
-| | **HTML** | — | a self-contained reveal.js presentation |
-
-- Files are saved next to the Markdown file (`notes.pdf`, `notes.docx`, `notes.slides.pdf`,
-  `notes.slides.html`…) or in `"exportDir"`.
-- **Videos are left out** of every export (a "▶ video: …" line marks where they were).
-- Exports always use the light theme.
-- The snapshot comes from the preview page, so what you see is what you get. Exporting from
-  Zed or the CLI with no preview open renders the page in a hidden headless browser.
-- Your own Word styles or slide master: `"referenceDocx"`, `"referenceOdt"`, `"referencePptx"`
-  (pandoc `--reference-doc`).
-- Needs: Chrome or Chromium for PDF; `pandoc` for docx/odt/pptx (`brew install pandoc`);
-  LibreOffice for odp (`brew install --cask libreoffice`). `markdown-zed doctor` checks them.
+- **Document view**: the document as the preview shows it, always in the light theme,
+  without the toolbar. `<!-- slide -->` markers become page breaks.
+- **Slide view** (P): one slide per page, in the reveal.js theme; slides that are too
+  tall are shrunk to fit. Speaker notes are left out.
+- **Videos are left out** (a "▶ video: …" line marks where they were). Chart.js and
+  Plotly charts are printed as pictures.
+- From Zed or the CLI, the preview opens first when it isn't open yet.
 
 ## The viewer
 
@@ -196,8 +183,7 @@ Press **E** (or the download icon) in the preview, run a Zed task
 | **R** | re-render: re-reads imported files, re-runs code chunks, re-renders PlantUML |
 | **M** | math engine: KaTeX ↔ MathJax |
 | **P** | slide view on/off (reveal.js keys work inside: arrows, Esc = overview, F = fullscreen) |
-| **E** | export menu |
-| Cmd/Ctrl-P | print (or "Save as PDF") |
+| Cmd/Ctrl-P | print (or "Save as PDF"); in slide view one slide per page |
 
 - Only changed blocks are re-rendered (morphdom): typing never makes a diagram flicker.
 - One preview window follows the file you're editing. Opening the preview again
@@ -235,10 +221,7 @@ In `~/.config/zed/settings.json`:
         "enableScriptExecution": false,  // run ```python {cmd=true} chunks without asking
         "codeTimeout": 30,          // seconds per chunk
         "python": "",               // "" = workspace .venv, else python3
-        "exportDir": "",            // "" = next to the Markdown file; relative or absolute
         "slideTheme": "auto",       // when the front matter has no presentation.theme
-        "pandoc": "", "chrome": "", // "" = autodetect
-        "referenceDocx": "", "referenceOdt": "", "referencePptx": ""
         "port": 0                   // 0 = random
       }
       // "binary": { "path": "/Users/you/.cargo/bin/markdown-zed" }
@@ -252,7 +235,7 @@ In `~/.config/zed/settings.json`:
 ```
 markdown-zed preview FILE [--line N] [--new-window]    what the Option-M task runs
 markdown-zed render FILE                               print the HTML (debugging)
-markdown-zed export FILE -f FORMAT                     html | pdf | docx | odt | pptx | odp | slides-pdf | slides-html
+markdown-zed print FILE                                what Option-Shift-P runs (opens the print dialog)
 markdown-zed insert-slide FILE --line N                what Option-Shift-N runs
 markdown-zed serve                                     standalone preview server (auto-started)
 markdown-zed doctor                                    what was detected
@@ -289,10 +272,8 @@ that watches the file on disk.
   `"plantumlJar"` / `"java"` at your copies. `markdown-zed doctor` shows what it found.
 - **A video stays on "Converting…"** or shows a note: install ffmpeg (`brew install ffmpeg`);
   `markdown-zed doctor` shows whether it was found.
-- **Export fails**: `markdown-zed doctor` lists pandoc / Chrome / LibreOffice. Exports from
-  Zed need the preview open or Chrome/Chromium installed (for the hidden page).
-- **Equations missing in Impress**: open the .pptx in PowerPoint/Keynote, or export .odp
-  (equations become pictures there).
+- **Option-Shift-P does nothing visible**: the print dialog opens in the preview window;
+  bring that window to the front.
 - **matplotlib not found**: code chunks use the workspace `.venv` when there is one;
   install packages there, or set `"python"`.
 

@@ -207,7 +207,7 @@ pub fn to_chart_json(text: &str, opts: &CsvOptions, chart_type: &str, title: Opt
     cfg.to_string()
 }
 
-/// The table as a GitHub pipe table (used by document exports).
+/// The table as a GitHub pipe table (not used by the preview; kept for the CLI and tests).
 pub fn to_markdown(text: &str, opts: &CsvOptions) -> String {
     let d = opts.delimiter.unwrap_or_else(|| detect_delimiter(text));
     let rows = parse(text, d);

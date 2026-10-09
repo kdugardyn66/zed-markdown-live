@@ -40,6 +40,8 @@ def run(page, env, lsp, inst, check, wait_for, api, uri):
     check("plotly figure from python", ok)
     ok = wait_for(lambda: page.locator(".ml-chunk .ml-error", has_text="expected failure").count() == 1, 30)
     check("python error shown", ok)
+    err = page.locator(".ml-chunk .ml-error", has_text="expected failure").inner_text() if ok else ""
+    check("python error: only the chunk's own lines", "ml_prelude" not in err and "exec(compile" not in err and 'File "chunk", line 1' in err and 'raise RuntimeError' in err, err)
     check("banner gone", wait_for(lambda: page.locator("#ml-banner").is_hidden(), 5))
 
     # MathJax switch

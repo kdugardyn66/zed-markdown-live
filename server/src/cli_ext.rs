@@ -1,16 +1,16 @@
-//! Extra CLI commands added by later versions (export, insert-slide…).
+//! Extra CLI commands added by later versions (print, insert-slide…).
 
 use crate::app::App;
 use crate::config::Settings;
 
 pub fn usage_lines() -> &'static str {
-    "  markdown-zed export FILE -f FORMAT      html | pdf | docx | odt | pptx | odp | slides-pdf | slides-html\n  markdown-zed insert-slide FILE --line N insert <!-- slide --> (in Zed: through the language server)\n"
+    "  markdown-zed print FILE                 open the preview and show the print dialog\n  markdown-zed insert-slide FILE --line N insert <!-- slide --> (in Zed: through the language server)\n"
 }
 
 /// Runs `cmd`; returns false when it isn't an extra command.
 pub fn run(cmd: &str, args: &[String]) -> bool {
     match cmd {
-        "export" => cli_export(args),
+        "print" => cli_print(args),
         "insert-slide" => cli_insert_slide(args),
         _ => return false,
     }
@@ -40,27 +40,16 @@ fn post(inst: &crate::Instance, path: &str, body: serde_json::Value, timeout: u6
     }
 }
 
-fn cli_export(args: &[String]) {
+fn cli_print(args: &[String]) {
     let a = crate::parse_file_args(args);
-    let format = a.opts.iter().find(|(k, _)| k == "format").map(|(_, v)| v.clone()).unwrap_or_else(|| "pdf".into());
     if !a.file.is_file() {
         crate::notify_error(&format!("no such file: {}", a.file.display()));
         std::process::exit(1);
     }
     let inst = instance_for(&a.file);
-    match post(&inst, "/api/request-export", serde_json::json!({"path": a.file.to_string_lossy(), "format": format}), 200) {
-        Ok(v) => {
-            let p = v["path"].as_str().unwrap_or("");
-            println!("{p}");
-            if cfg!(target_os = "macos") {
-                let msg = format!("Saved {}", std::path::Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
-                let _ = std::process::Command::new("osascript").arg("-e").arg(format!("display notification \"{}\" with title \"MarkDown Live\"", msg.replace('"', "'"))).status();
-            }
-        }
-        Err(e) => {
-            crate::notify_error(&format!("export failed: {e}"));
-            std::process::exit(1);
-        }
+    if let Err(e) = post(&inst, "/api/request-print", serde_json::json!({"path": a.file.to_string_lossy()}), 10) {
+        crate::notify_error(&format!("print failed: {e}"));
+        std::process::exit(1);
     }
 }
 
@@ -87,6 +76,5 @@ pub fn doctor(s: &Settings) {
     println!("kroki         : {} (only for ```kroki-…``` blocks)", s.kroki_server);
     let py = crate::util::which("python3").map(|p| p.display().to_string()).unwrap_or_else(|| "not found".into());
     println!("ffmpeg        : {}", crate::media::ffmpeg().map(|p| p.display().to_string()).unwrap_or_else(|| "not found — needed to convert MKV/AVI/… videos (brew install ffmpeg)".into()));
-    crate::export::doctor(s);
     println!("code chunks   : {} (python: {py})", if s.enable_script_execution { "enabled" } else { "off — enable with \"enableScriptExecution\": true or per session in the preview" });
 }

@@ -53,7 +53,7 @@ pub struct Ctx<'s> {
     pub depth: usize,
     /// The document being previewed (stays the same inside imported files).
     pub doc: PathBuf,
-    /// Background jobs (None = run slow renderers right away: CLI and exports).
+    /// Background jobs (None = run slow renderers right away: the CLI).
     pub jobs: Option<Arc<Jobs>>,
     /// Code chunks may run (setting or "Run code" in the preview).
     pub allow_scripts: bool,

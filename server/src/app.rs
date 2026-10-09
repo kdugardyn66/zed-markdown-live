@@ -34,16 +34,6 @@ pub struct View {
     pub deck: Value,
 }
 
-/// An export asked for by the editor/CLI; the preview page builds the snapshot.
-pub struct ExportJob {
-    pub id: u64,
-    pub format: String,
-    pub file: PathBuf,
-    pub result: Option<Result<PathBuf, String>>,
-    /// A preview page has received the request.
-    pub delivered: bool,
-}
-
 #[derive(Default)]
 pub struct State {
     pub docs: HashMap<PathBuf, String>,
@@ -62,8 +52,9 @@ pub struct State {
     pub last_seen: Option<Instant>,
     pub disk_mtime: Option<SystemTime>,
     pub shutdown: bool,
-    pub exports: Vec<ExportJob>,
-    pub export_seq: u64,
+    /// A print asked for from Zed/the CLI: (id, file). The page shows the print dialog.
+    pub print_request: Option<(u64, PathBuf)>,
+    pub print_seq: u64,
 }
 
 pub type Notifier = Box<dyn Fn(Value) + Send + Sync>;
@@ -282,7 +273,7 @@ impl App {
             "blockedChunks": v.blocked_chunks,
             "slides": v.slides,
             "deck": v.deck,
-            "exportRequest": st.exports.iter().find(|e| e.result.is_none() && st.view.file.as_ref() == Some(&e.file)).map(|e| json!({"id": e.id, "format": e.format, "flavour": crate::export::flavour(&e.format)})),
+            "printRequest": st.print_request.as_ref().filter(|(_, f)| st.view.file.as_ref() == Some(f)).map(|(id, _)| json!({"id": id})),
             "pending": v.pending,
             "focus": v.focus,
             "cursorLine": st.cursor_line,
@@ -367,7 +358,7 @@ impl App {
         }
     }
 
-    // ------------------------------------------------------------ v4: slides and exports
+    // ------------------------------------------------------------ v4: slides and printing
 
     /// Inserts `<!-- slide -->` at the start of `line` (in the editor through LSP, else in the file).
     pub fn insert_slide(&self, path: &Path, line: usize) -> Result<(), String> {
@@ -391,84 +382,23 @@ impl App {
         Ok(())
     }
 
-    /// Asks the preview page for a snapshot and converts it. Opens a hidden headless
-    /// browser when no preview is connected. Blocks until done (or 3 minutes).
-    pub fn export(&self, path: &Path, format: &str) -> Result<PathBuf, String> {
-        if !crate::export::FORMATS.contains(&format) {
-            return Err(format!("unknown format {format}; use one of {}", crate::export::FORMATS.join(", ")));
-        }
+    /// Opens the preview of `path` (if needed) and asks it to show the print dialog.
+    pub fn print(&self, path: &Path) {
         let path = norm_path(path);
-        let (id, connected) = {
+        {
             let mut st = self.state.lock().unwrap();
-            st.export_seq += 1;
-            let id = st.export_seq;
-            st.exports.push(ExportJob { id, format: format.to_string(), file: path.clone(), result: None, delivered: false });
-            if st.target.as_ref() != Some(&path) {
-                st.target = Some(path.clone());
-                st.disk_mtime = None;
-                self.mark_dirty(&mut st);
-            }
-            self.bump(&mut st);
-            (id, App::client_connected(&st))
-        };
-        // A page that looks connected may be gone (closed tab): if nobody picks the
-        // request up within a few seconds, render it in a hidden browser.
-        let mut headless = None;
-        let picked_up = connected && {
-            let until = Instant::now() + Duration::from_secs(4);
-            let mut st = self.state.lock().unwrap();
-            loop {
-                if st.exports.iter().any(|e| e.id == id && (e.delivered || e.result.is_some())) {
-                    break true;
-                }
-                if Instant::now() >= until {
-                    break false;
-                }
-                st = self.changed.wait_timeout(st, Duration::from_millis(200)).unwrap().0;
-            }
-        };
-        if !picked_up {
-            headless = Some(crate::export_page::open_headless(&self.settings(), &self.url())?);
+            st.print_seq += 1;
+            st.print_request = Some((st.print_seq, path.clone()));
         }
-        let deadline = Instant::now() + Duration::from_secs(180);
-        let mut st = self.state.lock().unwrap();
-        let res = loop {
-            if let Some(i) = st.exports.iter().position(|e| e.id == id && e.result.is_some()) {
-                break st.exports.remove(i).result.unwrap();
-            }
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() || st.shutdown {
-                st.exports.retain(|e| e.id != id);
-                break Err("the preview page did not answer (is it open?)".into());
-            }
-            st = self.changed.wait_timeout(st, left.min(Duration::from_millis(500))).unwrap().0;
-        };
-        drop(st);
-        if let Some(mut h) = headless {
-            let _ = h.kill();
-            let _ = h.wait();
-        }
-        res
+        self.open_preview(path, None, false);
     }
 
-    /// The page delivered a snapshot: convert it.
-    pub fn export_snapshot(&self, id: Option<u64>, format: &str, snapshot: &str) -> Result<PathBuf, String> {
-        let file = {
-            let st = self.state.lock().unwrap();
-            match id.and_then(|id| st.exports.iter().find(|e| e.id == id)) {
-                Some(e) => e.file.clone(),
-                None => st.view.file.clone().ok_or("nothing to export")?,
-            }
-        };
-        let res = crate::export::convert(&self.settings(), &file, format, snapshot);
-        if let Some(id) = id {
-            let mut st = self.state.lock().unwrap();
-            if let Some(e) = st.exports.iter_mut().find(|e| e.id == id) {
-                e.result = Some(res.clone());
-            }
-            self.changed.notify_all();
+    /// The page took the print request (only one tab prints it).
+    pub fn print_taken(&self, id: u64) {
+        let mut st = self.state.lock().unwrap();
+        if st.print_request.as_ref().map(|r| r.0) == Some(id) {
+            st.print_request = None;
         }
-        res
     }
 
     pub fn shutdown(&self) {

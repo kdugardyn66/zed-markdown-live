@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 — printing instead of exports
+
+- Removed the exports (docx, odt, html, pptx, odp, slide html/pdf, PDF via headless Chrome),
+  the export menu (E), Option-Shift-E, `markdown-zed export` and the settings `exportDir`,
+  `pandoc`, `chrome`, `referenceDocx`, `referenceOdt`, `referencePptx`. pandoc and
+  LibreOffice are no longer used.
+- Print: Cmd/Ctrl-P or the printer icon prints the document (light theme, no toolbar,
+  videos left out); in slide view one slide per page in the reveal.js theme.
+  "Save as PDF" in the print dialog makes a PDF.
+- Print from Zed: Option-Shift-P, code action "MarkDown Live: Print", `markdown-zed print FILE`.
+- Python errors in code chunks only show your own code's lines (with the source line),
+  not MarkDown Live's wrapper.
+
 ## 0.4.0 — slides and exports
 
 - Slides with MPE's `<!-- slide -->` (attributes, `vertical=true`, speaker notes) and

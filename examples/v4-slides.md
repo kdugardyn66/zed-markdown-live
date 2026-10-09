@@ -1,14 +1,15 @@
 ---
-title: Slides and exports
+title: Slides and printing
 presentation:
   theme: white.css
   transition: none
   slideNumber: true
 ---
-# Slides and exports
+# Slides and printing
 
 Made with **MarkDown Live**. Press **P** in the preview for the slide view,
-**E** for exports, and **Option-Shift-N** in Zed to insert a new slide.
+**Cmd-P** to print (in the slide view: one slide per page), and **Option-Shift-N**
+in Zed to insert a new slide.
 
 <aside class="notes">Say hello first.</aside>
 

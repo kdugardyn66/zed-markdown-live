@@ -49,8 +49,6 @@ footer#ml-status { display: flex; gap: 14px; align-items: center; padding: 3px 1
 #ml-deck.dark { background: #191919; }
 #ml-deck[hidden], #ml-scroller[hidden] { display: none; }
 #ml-deck .reveal { position: absolute; inset: 0; }
-.menu .hint { font-size: 11.5px; color: var(--muted); margin: 6px 4px 2px; line-height: 1.4; }
-.menu .hint code { font-size: 11px; }
 /* menus (used by later versions) */
 .menu { position: absolute; top: 44px; right: 10px; width: 300px; max-width: calc(100vw - 20px); background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 10px; display: none; z-index: 10; }
 .menu.open { display: block; }

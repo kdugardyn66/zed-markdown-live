@@ -175,6 +175,38 @@ pub fn to_html(text: &str, opts: &CsvOptions) -> String {
     h
 }
 
+/// A Chart.js config from CSV: first column = labels, numeric columns = datasets.
+pub fn to_chart_json(text: &str, opts: &CsvOptions, chart_type: &str, title: Option<&str>) -> String {
+    let d = opts.delimiter.unwrap_or_else(|| detect_delimiter(text));
+    let rows = parse(text, d);
+    let num = |s: &str| -> Option<f64> {
+        let t = s.trim().trim_end_matches('%');
+        let t = if t.contains(',') && !t.contains('.') { t.replace(',', ".") } else { t.replace(',', "") };
+        t.parse::<f64>().ok()
+    };
+    let (head, body): (Vec<String>, &[Vec<String>]) = if opts.header && !rows.is_empty() { (rows[0].clone(), &rows[1..]) } else { (vec![], &rows[..]) };
+    let cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    let labels: Vec<String> = body.iter().map(|r| r.first().cloned().unwrap_or_default()).collect();
+    let mut datasets = Vec::new();
+    for c in 1..cols {
+        let vals: Vec<Option<f64>> = body.iter().map(|r| r.get(c).and_then(|v| num(v))).collect();
+        if vals.iter().all(|v| v.is_none()) {
+            continue;
+        }
+        let label = head.get(c).cloned().unwrap_or_else(|| format!("Series {c}"));
+        datasets.push(serde_json::json!({"label": label, "data": vals}));
+    }
+    let mut cfg = serde_json::json!({
+        "type": chart_type,
+        "data": {"labels": labels, "datasets": datasets},
+        "options": {"responsive": true, "plugins": {"legend": {"display": true}}}
+    });
+    if let Some(t) = title {
+        cfg["options"]["plugins"]["title"] = serde_json::json!({"display": true, "text": t});
+    }
+    cfg.to_string()
+}
+
 /// The table as a GitHub pipe table (used by document exports).
 pub fn to_markdown(text: &str, opts: &CsvOptions) -> String {
     let d = opts.delimiter.unwrap_or_else(|| detect_delimiter(text));

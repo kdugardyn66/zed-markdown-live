@@ -14,6 +14,8 @@ mod app;
 mod cli_ext;
 mod config;
 mod csv;
+mod diagrams;
+mod jobs;
 mod http;
 mod http_ext;
 mod lsp;
@@ -254,7 +256,7 @@ fn cli_render(args: &[String]) {
         std::process::exit(1)
     });
     let s = env_settings();
-    let ctx = markdown::Ctx { settings: &s, file: a.file.clone(), roots: vec![], sourcepos: true, depth: 0 };
+    let ctx = markdown::Ctx::new(&s, a.file.clone(), vec![]);
     print!("{}", markdown::render(&text, &ctx).html);
 }
 

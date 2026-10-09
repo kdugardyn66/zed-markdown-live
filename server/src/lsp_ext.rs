@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub fn extra_commands() -> Vec<(&'static str, &'static str)> {
-    vec![]
+    vec![("markdownLive.runCodeChunks", "MarkDown Live: Run code chunks (this session)")]
 }
 
 /// Extra Zed tasks: (label, args JSON, reveal, optional key).
@@ -13,10 +13,19 @@ pub fn extra_tasks() -> Vec<(&'static str, &'static str, &'static str, Option<&'
     vec![]
 }
 
-pub fn execute(_a: &Arc<App>, cmd: &str, _path: PathBuf, _line: Option<usize>) -> Result<(), String> {
-    Err(format!("unknown command {cmd}"))
+pub fn execute(a: &Arc<App>, cmd: &str, _path: PathBuf, _line: Option<usize>) -> Result<(), String> {
+    match cmd {
+        "markdownLive.runCodeChunks" => {
+            a.allow_scripts();
+            Ok(())
+        }
+        _ => Err(format!("unknown command {cmd}")),
+    }
 }
 
-pub fn done_message(_cmd: &str) -> Option<String> {
-    None
+pub fn done_message(cmd: &str) -> Option<String> {
+    match cmd {
+        "markdownLive.runCodeChunks" => Some("MarkDown Live: code chunks run for this session (set enableScriptExecution to make it permanent).".into()),
+        _ => None,
+    }
 }

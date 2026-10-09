@@ -55,6 +55,24 @@ pub struct Settings {
     pub csv_max_rows: usize,
     /// `bundled` (default, offline) or `cdn` (jsDelivr; smaller pages, needs internet).
     pub libraries: String,
+    /// Math engine: `katex` (fast) or `mathjax` (more complete LaTeX).
+    pub math: String,
+    /// PlantUML: `local` (Java + plantuml.jar, nothing leaves the machine), `online`
+    /// (the `plantumlServer`), or `auto` (local when found, else online).
+    pub plantuml_render: String,
+    pub plantuml_server: String,
+    /// Path to plantuml.jar. Empty = autodetect (also finds PlantUML Live's copy).
+    pub plantuml_jar: String,
+    /// Path to java. Empty = autodetect.
+    pub java: String,
+    /// Kroki server for ```kroki-<type>``` blocks and `{kroki=true}` (online, explicit opt-in per block).
+    pub kroki_server: String,
+    /// Run code chunks (```python {cmd=true}```). Off by default; the preview can allow it per session.
+    pub enable_script_execution: bool,
+    /// Timeout for one code chunk, in seconds.
+    pub code_timeout: u64,
+    /// Python interpreter. Empty = `.venv/bin/python` in the workspace, else `python3`.
+    pub python: String,
 }
 
 impl Default for Settings {
@@ -74,6 +92,15 @@ impl Default for Settings {
             mermaid_theme: "auto".into(),
             csv_max_rows: 5000,
             libraries: "bundled".into(),
+            math: "katex".into(),
+            plantuml_render: "local".into(),
+            plantuml_server: "https://www.plantuml.com/plantuml".into(),
+            plantuml_jar: String::new(),
+            java: String::new(),
+            kroki_server: "https://kroki.io".into(),
+            enable_script_execution: false,
+            code_timeout: 30,
+            python: String::new(),
         }
     }
 }
@@ -108,6 +135,14 @@ impl Settings {
         if self.live_update_delay < 20 {
             self.live_update_delay = 20;
         }
+        if self.plantuml_render == "server" {
+            self.plantuml_render = "online".into();
+        }
+        self.plantuml_server = self.plantuml_server.trim_end_matches('/').to_string();
+        self.kroki_server = self.kroki_server.trim_end_matches('/').to_string();
+        if self.code_timeout == 0 {
+            self.code_timeout = 30;
+        }
         if self.csv_max_rows == 0 {
             self.csv_max_rows = 5000;
         }
@@ -116,6 +151,8 @@ impl Settings {
             (&mut self.front_matter, &["none", "table", "code"][..], "none"),
             (&mut self.libraries, &["bundled", "cdn"][..], "bundled"),
             (&mut self.mermaid_theme, &["auto", "default", "dark", "forest", "neutral", "base"][..], "auto"),
+            (&mut self.math, &["katex", "mathjax"][..], "katex"),
+            (&mut self.plantuml_render, &["local", "online", "auto"][..], "local"),
         ] {
             let v = field.trim().to_ascii_lowercase();
             *field = if allowed.contains(&v.as_str()) { v } else { default.into() };
@@ -128,6 +165,7 @@ impl Settings {
             "theme": self.theme,
             "mermaidTheme": self.mermaid_theme,
             "scrollSync": self.scroll_sync,
+            "math": self.math,
         })
     }
 }
@@ -149,6 +187,15 @@ struct SettingsShadow {
     mermaid_theme: String,
     csv_max_rows: usize,
     libraries: String,
+    math: String,
+    plantuml_render: String,
+    plantuml_server: String,
+    plantuml_jar: String,
+    java: String,
+    kroki_server: String,
+    enable_script_execution: bool,
+    code_timeout: u64,
+    python: String,
 }
 
 impl From<&Settings> for SettingsShadow {
@@ -167,6 +214,15 @@ impl From<&Settings> for SettingsShadow {
             mermaid_theme: s.mermaid_theme.clone(),
             csv_max_rows: s.csv_max_rows,
             libraries: s.libraries.clone(),
+            math: s.math.clone(),
+            plantuml_render: s.plantuml_render.clone(),
+            plantuml_server: s.plantuml_server.clone(),
+            plantuml_jar: s.plantuml_jar.clone(),
+            java: s.java.clone(),
+            kroki_server: s.kroki_server.clone(),
+            enable_script_execution: s.enable_script_execution,
+            code_timeout: s.code_timeout,
+            python: s.python.clone(),
         }
     }
 }

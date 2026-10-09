@@ -6,7 +6,7 @@ use crate::util::{self, norm_path, path_to_uri};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -25,6 +25,10 @@ pub struct View {
     pub headings: Vec<Heading>,
     pub render_ms: u128,
     pub focus: u64,
+    /// Code chunks not run because execution is off.
+    pub blocked_chunks: usize,
+    /// Server-side blocks still rendering.
+    pub pending: usize,
 }
 
 #[derive(Default)]
@@ -63,11 +67,15 @@ pub struct App {
     pub notify: Mutex<Option<Notifier>>,
     pub next_request: AtomicU64,
     pub started: Instant,
+    /// Slow server-side renders (PlantUML, Kroki, code chunks).
+    pub jobs: Arc<crate::jobs::Jobs>,
+    /// "Run code chunks" was allowed in the preview for this session.
+    pub scripts_allowed: AtomicBool,
 }
 
 impl App {
     pub fn new(mode: Mode, settings: Settings) -> Arc<App> {
-        Arc::new(App {
+        let app = Arc::new(App {
             mode,
             settings: RwLock::new(settings),
             token: util::random_token(),
@@ -78,7 +86,25 @@ impl App {
             notify: Mutex::new(None),
             next_request: AtomicU64::new(1),
             started: Instant::now(),
-        })
+            jobs: crate::jobs::Jobs::new(),
+            scripts_allowed: AtomicBool::new(false),
+        });
+        // A finished background job: re-render so the result shows up.
+        let weak = Arc::downgrade(&app);
+        app.jobs.set_on_done(Box::new(move || {
+            if let Some(a) = weak.upgrade() {
+                let mut st = a.state.lock().unwrap();
+                st.dirty = true;
+                st.dirty_since = Some(Instant::now() - Duration::from_secs(10));
+                a.work.notify_all();
+            }
+        }));
+        app
+    }
+
+    pub fn allow_scripts(&self) {
+        self.scripts_allowed.store(true, Ordering::SeqCst);
+        self.refresh();
     }
 
     pub fn settings(&self) -> Settings {
@@ -235,6 +261,8 @@ impl App {
             "html": if include_html { Some(&v.html) } else { None },
             "headings": if include_html { Some(&v.headings) } else { None },
             "renderMs": v.render_ms as u64,
+            "blockedChunks": v.blocked_chunks,
+            "pending": v.pending,
             "focus": v.focus,
             "cursorLine": st.cursor_line,
             "cursorSeq": st.cursor_seq,
@@ -292,8 +320,12 @@ impl App {
             drop(st);
             let t0 = Instant::now();
             let settings = self.settings();
-            let ctx = Ctx { settings: &settings, file: target.clone(), roots, sourcepos: true, depth: 0 };
+            let mut ctx = Ctx::new(&settings, target.clone(), roots);
+            ctx.jobs = Some(self.jobs.clone());
+            ctx.allow_scripts = settings.enable_script_execution || self.scripts_allowed.load(Ordering::SeqCst);
+            self.jobs.begin(&target);
             let r = markdown::render(&text, &ctx);
+            let (blocked, pending) = (ctx.blocked_chunks.get(), ctx.pending.get());
             let ms = t0.elapsed().as_millis();
             let mut st = self.state.lock().unwrap();
             if st.target.as_ref() != Some(&target) {
@@ -304,11 +336,14 @@ impl App {
             st.view.title = r.title;
             st.view.headings = r.headings;
             st.view.render_ms = ms;
+            st.view.blocked_chunks = blocked;
+            st.view.pending = pending;
             self.bump(&mut st);
         }
     }
 
     pub fn shutdown(&self) {
+        self.jobs.shutdown();
         let mut st = self.state.lock().unwrap();
         st.shutdown = true;
         self.work.notify_all();

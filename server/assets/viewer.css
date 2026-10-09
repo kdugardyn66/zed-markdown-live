@@ -32,6 +32,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 #ml-toc .l2 { padding-left: 18px; } #ml-toc .l3 { padding-left: 30px; } #ml-toc .l4, #ml-toc .l5, #ml-toc .l6 { padding-left: 42px; font-size: 12px; }
 #ml-toc .empty { color: var(--muted); padding: 8px; }
 #ml-scroller { flex: 1; overflow: auto; position: relative; scroll-behavior: auto; }
+#ml-banner.info { background: var(--panel); color: var(--text); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 #ml-banner { margin: 10px auto 0; max-width: 980px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--danger-bg); color: var(--danger); }
 footer#ml-status { display: flex; gap: 14px; align-items: center; padding: 3px 10px; font-size: 11.5px; color: var(--muted); background: var(--panel); border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #2da44e; display: inline-block; margin-right: -8px; }

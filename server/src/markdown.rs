@@ -13,7 +13,12 @@ use crate::csv::{self, CsvOptions};
 use crate::util;
 use comrak::nodes::{AstNode, NodeHtmlBlock, NodeValue};
 use comrak::{Anchorizer, Arena, Options};
+use crate::jobs::Jobs;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Heading {
@@ -41,14 +46,60 @@ pub struct Ctx<'s> {
     pub sourcepos: bool,
     /// Nesting level of `@import "x.md"`.
     pub depth: usize,
+    /// The document being previewed (stays the same inside imported files).
+    pub doc: PathBuf,
+    /// Background jobs (None = run slow renderers right away: CLI and exports).
+    pub jobs: Option<Arc<Jobs>>,
+    /// Code chunks may run (setting or "Run code" in the preview).
+    pub allow_scripts: bool,
+    /// Per-kind block counters (identify "the 2nd PlantUML block" while it changes).
+    ordinals: Rc<RefCell<HashMap<String, usize>>>,
+    /// Code chunks that weren't run because scripts aren't allowed.
+    pub blocked_chunks: Rc<Cell<usize>>,
+    /// Jobs still running for this render.
+    pub pending: Rc<Cell<usize>>,
 }
 
 impl<'s> Ctx<'s> {
+    pub fn new(settings: &'s Settings, file: PathBuf, roots: Vec<PathBuf>) -> Ctx<'s> {
+        Ctx {
+            settings,
+            doc: file.clone(),
+            file,
+            roots,
+            sourcepos: true,
+            depth: 0,
+            jobs: None,
+            allow_scripts: settings.enable_script_execution,
+            ordinals: Rc::new(RefCell::new(HashMap::new())),
+            blocked_chunks: Rc::new(Cell::new(0)),
+            pending: Rc::new(Cell::new(0)),
+        }
+    }
     pub fn base_dir(&self) -> PathBuf {
         self.file.parent().map(|p| p.to_path_buf()).unwrap_or_else(std::env::temp_dir)
     }
     fn child(&self, file: PathBuf) -> Ctx<'s> {
-        Ctx { settings: self.settings, file, roots: self.roots.clone(), sourcepos: false, depth: self.depth + 1 }
+        Ctx {
+            settings: self.settings,
+            file,
+            roots: self.roots.clone(),
+            sourcepos: false,
+            depth: self.depth + 1,
+            doc: self.doc.clone(),
+            jobs: self.jobs.clone(),
+            allow_scripts: self.allow_scripts,
+            ordinals: self.ordinals.clone(),
+            blocked_chunks: self.blocked_chunks.clone(),
+            pending: self.pending.clone(),
+        }
+    }
+    /// "plantuml#2": the n-th block of a kind in this render.
+    pub fn slot(&self, kind: &str) -> String {
+        let mut o = self.ordinals.borrow_mut();
+        let n = o.entry(kind.to_string()).or_insert(0);
+        *n += 1;
+        format!("{}#{kind}#{n}", self.doc.display())
     }
 }
 
@@ -460,8 +511,23 @@ fn sp_attr(ctx: &Ctx, node: &AstNode) -> String {
 /// Turns a fenced code block into HTML. Returns `None` to leave it to comrak.
 pub fn render_fence(ctx: &Ctx, lang: &str, attrs: &[(String, String)], code: &str, sp: &str) -> Option<String> {
     let cls = classes(attrs).join(" ");
+    // Code chunks: ```python {cmd=true}
+    if let Some(cmd) = attr(attrs, "cmd") {
+        if cmd != "false" {
+            if let Some(h) = code_chunk(ctx, lang, cmd, attrs, code, sp) {
+                return Some(h);
+            }
+        }
+    }
+    if lang.starts_with("kroki-") || attr_true(attrs, "kroki") {
+        let kind = lang.strip_prefix("kroki-").unwrap_or(lang).to_string();
+        let server = ctx.settings.kroki_server.clone();
+        let src = code.to_string();
+        let key = format!("{server}|{kind}|{code}");
+        return Some(server_block(ctx, &format!("kroki-{kind}"), &key, sp, &cls, Box::new(move || crate::diagrams::kroki(&server, &kind, &src))));
+    }
     match lang {
-        "mermaid" => Some(diagram_div("mermaid", code, sp, &cls)),
+        "mermaid" => Some(diagram_div(ctx, "mermaid", code, sp, &cls, attrs)),
         "math" | "latex" | "katex" | "tex-math" => {
             Some(format!("<div class=\"ml-math-block {cls}\"{sp}><span data-math-style=\"display\">{}</span></div>", escape_html(code)))
         }
@@ -471,18 +537,169 @@ pub fn render_fence(ctx: &Ctx, lang: &str, attrs: &[(String, String)], code: &st
                 o.delimiter = Some('\t');
             }
             o.apply(attrs);
+            if let Some(t) = attr(attrs, "chart") {
+                return Some(diagram_div(ctx, "chart", &csv::to_chart_json(code, &o, t, attr(attrs, "title")), sp, &cls, &[]));
+            }
             Some(format!("<div class=\"ml-block {cls}\"{sp}>{}</div>", csv::to_html(code, &o)))
+        }
+        // rendered in the browser (bundled libraries)
+        "dot" | "graphviz" | "viz" | "neato" | "circo" | "fdp" | "twopi" | "osage" | "sfdp" => {
+            let mut a = attrs.to_vec();
+            if !matches!(lang, "dot" | "graphviz" | "viz") && attr(attrs, "engine").is_none() {
+                a.push(("engine".into(), lang.into()));
+            }
+            Some(diagram_div(ctx, "viz", code, sp, &cls, &a))
+        }
+        "vega" => Some(diagram_div(ctx, "vega", code, sp, &cls, attrs)),
+        "vega-lite" | "vegalite" | "vl" => Some(diagram_div(ctx, "vega-lite", code, sp, &cls, attrs)),
+        "wavedrom" => Some(diagram_div(ctx, "wavedrom", code, sp, &cls, attrs)),
+        "flow" | "flowchart" | "flowchart.js" => Some(diagram_div(ctx, "flow", code, sp, &cls, attrs)),
+        "chart" | "chartjs" | "chart.js" => Some(diagram_div(ctx, "chart", code, sp, &cls, attrs)),
+        "plotly" => Some(diagram_div(ctx, "plotly", code, sp, &cls, attrs)),
+        "smiles" => Some(diagram_div(ctx, "smiles", code, sp, &cls, attrs)),
+        // rendered on the server (PlantUML: local Java, or the configured server)
+        "plantuml" | "puml" | "uml" | "ditaa" | "salt" | "mindmap" | "gantt" | "wbs" => {
+            let src = plantuml_source(lang, code);
+            let s = ctx.settings.clone();
+            let dir = ctx.base_dir();
+            let backend = crate::diagrams::plantuml_backend(&s).unwrap_or_default();
+            let key = format!("{backend}|{src}");
+            Some(server_block(ctx, "plantuml", &key, sp, &cls, Box::new(move || crate::diagrams::plantuml_svg(&s, &src, &dir))))
         }
         _ => None,
     }
 }
 
-fn diagram_div(kind: &str, code: &str, sp: &str, cls: &str) -> String {
+/// Adds `@startuml`/`@enduml` (or `@startditaa` …) when the block doesn't have them.
+fn plantuml_source(lang: &str, code: &str) -> String {
+    if code.trim_start().starts_with("@start") {
+        return code.to_string();
+    }
+    let kind = match lang {
+        "ditaa" | "salt" | "mindmap" | "gantt" | "wbs" => lang,
+        _ => "uml",
+    };
+    format!("@start{kind}\n{code}\n@end{kind}\n")
+}
+
+fn diagram_div(ctx: &Ctx, kind: &str, code: &str, sp: &str, cls: &str, attrs: &[(String, String)]) -> String {
+    let opts: serde_json::Map<String, serde_json::Value> = attrs
+        .iter()
+        .filter(|(k, _)| k != "class" && k != "id")
+        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+        .collect();
+    let opts_json = if opts.is_empty() { String::new() } else { serde_json::Value::Object(opts).to_string() };
+    let opts_attr = if opts_json.is_empty() { String::new() } else { format!(" data-opts=\"{}\"", escape_html(&opts_json)) };
+    let base = if matches!(kind, "vega" | "vega-lite") { format!(" data-base=\"{}/\"", fs_url(&ctx.base_dir())) } else { String::new() };
     format!(
-        "<div class=\"ml-diagram ml-{kind} {cls}\" data-kind=\"{kind}\" data-h=\"{}\"{sp}><pre class=\"ml-src\">{}</pre></div>",
-        hash(&format!("{kind}\n{code}")),
+        "<div class=\"ml-diagram ml-{kind} {cls}\" data-kind=\"{kind}\" data-h=\"{}\"{opts_attr}{base}{sp}><pre class=\"ml-src\">{}</pre></div>",
+        hash(&format!("{kind}\n{opts_json}\n{code}")),
         escape_html(code)
     )
+}
+
+fn svg_img(svg: &str, alt: &str) -> String {
+    format!("<img class=\"ml-svg\" alt=\"{}\" src=\"data:image/svg+xml;base64,{}\">", escape_html(alt), util::base64(svg.as_bytes()))
+}
+
+/// A block rendered on the server, through the job queue when there is one.
+fn server_block(ctx: &Ctx, kind: &str, key_src: &str, sp: &str, cls: &str, job: crate::jobs::JobFn) -> String {
+    let key = hash(&format!("{kind}\n{key_src}"));
+    let label = kind.trim_start_matches("kroki-").to_string();
+    let wrap = |inner: String, extra: &str| format!("<div class=\"ml-diagram ml-server ml-{kind} {cls}{extra}\" data-h=\"{key}\"{sp}>{inner}</div>");
+    let result = match &ctx.jobs {
+        Some(j) => match j.get(&ctx.doc, &ctx.slot(kind), &key, std::time::Duration::from_millis(350), true, || job) {
+            crate::jobs::Lookup::Ready(r) => r,
+            crate::jobs::Lookup::Pending(stale) => {
+                ctx.pending.set(ctx.pending.get() + 1);
+                return match stale {
+                    Some(svg) => wrap(svg_img(&svg, &label), " ml-stale"),
+                    None => wrap(format!("<div class=\"ml-placeholder\">⏳ Rendering {label}…</div>"), " ml-pending"),
+                };
+            }
+        },
+        None => crate::jobs::run_now(|| job),
+    };
+    match result {
+        Ok(svg) => wrap(svg_img(&svg, &label), ""),
+        Err(e) => wrap(error_box(&format!("{label}: {e}"), ""), ""),
+    }
+}
+
+/// ```python {cmd=true} … ``` — runs the code (when allowed) and shows its output.
+fn code_chunk(ctx: &Ctx, lang: &str, cmd: &str, attrs: &[(String, String)], code: &str, sp: &str) -> Option<String> {
+    let dir = ctx.base_dir();
+    let (argv, ext) = crate::diagrams::interpreter(ctx.settings, lang, cmd, &ctx.roots, &dir)?;
+    let hide = attr_true(attrs, "hide");
+    let shown_attrs: Vec<(String, String)> = attrs.iter().filter(|(k, _)| k != "cmd").cloned().collect();
+    let code_html = if hide { String::new() } else { code_block_html(lang, &shown_attrs, code, "") };
+    let chunk = |inner: String, extra: &str| format!("<div class=\"ml-chunk{extra}\"{sp}>{code_html}{inner}</div>");
+    if !ctx.allow_scripts {
+        ctx.blocked_chunks.set(ctx.blocked_chunks.get() + 1);
+        return Some(chunk(format!("<div class=\"ml-chunk-note\">▶ {} chunk not run — code execution is off</div>", escape_html(lang)), ""));
+    }
+    let args: Vec<String> = attr(attrs, "args").and_then(|a| serde_json::from_str(a).ok()).unwrap_or_default();
+    let timeout = std::time::Duration::from_secs(ctx.settings.code_timeout);
+    let key = hash(&format!("chunk\n{argv:?}\n{args:?}\n{}\n{code}", dir.display()));
+    let code_owned = code.to_string();
+    let ext = ext.to_string();
+    let dir2 = dir.clone();
+    let job: crate::jobs::JobFn = Box::new(move || crate::diagrams::run_chunk(&argv, &ext, &code_owned, &dir2, timeout, &args));
+    let result = match &ctx.jobs {
+        Some(j) => match j.get(&ctx.doc, &ctx.slot("chunk"), &key, std::time::Duration::from_millis(700), false, || job) {
+            crate::jobs::Lookup::Ready(r) => r,
+            crate::jobs::Lookup::Pending(stale) => {
+                ctx.pending.set(ctx.pending.get() + 1);
+                return Some(match stale {
+                    Some(json) => chunk(format_chunk_output(ctx, &json, attrs), " ml-stale"),
+                    None => chunk("<div class=\"ml-chunk-note\">⏳ running…</div>".into(), " ml-pending"),
+                });
+            }
+        },
+        None => crate::jobs::run_now(|| job),
+    };
+    Some(match result {
+        Ok(json) => chunk(format_chunk_output(ctx, &json, attrs), ""),
+        Err(e) => chunk(error_box(&e, ""), ""),
+    })
+}
+
+fn format_chunk_output(ctx: &Ctx, json: &str, attrs: &[(String, String)]) -> String {
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let mode = attr(attrs, "output").unwrap_or("text");
+    let stdout = v["stdout"].as_str().unwrap_or("");
+    let mut h = String::from("<div class=\"ml-chunk-out\">");
+    if !stdout.trim().is_empty() {
+        match mode {
+            "none" => {}
+            "html" => h.push_str(stdout),
+            "markdown" | "md" => h.push_str(&render(stdout, &ctx.child(ctx.file.clone())).html),
+            _ => h.push_str(&format!("<pre class=\"ml-out\">{}</pre>", escape_html(stdout.trim_end_matches('\n')))),
+        }
+    }
+    for f in v["figures"].as_array().cloned().unwrap_or_default() {
+        let data = f["data"].as_str().unwrap_or("");
+        match f["kind"].as_str().unwrap_or("") {
+            "FIG-svg" => h.push_str(&format!("<img class=\"ml-figure\" alt=\"figure\" src=\"data:image/svg+xml;base64,{data}\">")),
+            "FIG-png" => h.push_str(&format!("<img class=\"ml-figure\" alt=\"figure\" src=\"data:image/png;base64,{data}\">")),
+            "PLOTLY" => h.push_str(&format!(
+                "<div class=\"ml-diagram ml-plotly\" data-kind=\"plotly\" data-b64=\"1\" data-h=\"{}\"><pre class=\"ml-src\">{data}</pre></div>",
+                hash(data)
+            )),
+            _ => {}
+        }
+    }
+    let stderr = v["stderr"].as_str().unwrap_or("");
+    let failed = v["status"].as_i64().map(|c| c != 0).unwrap_or(true);
+    if v["timedOut"].as_bool() == Some(true) {
+        h.push_str(&error_box(&format!("stopped after {} s (codeTimeout)", ctx.settings.code_timeout), ""));
+    } else if failed && !stderr.trim().is_empty() {
+        h.push_str(&error_box(stderr.trim_end(), ""));
+    } else if !stderr.trim().is_empty() {
+        h.push_str(&format!("<pre class=\"ml-stderr\">{}</pre>", escape_html(stderr.trim_end())));
+    }
+    h.push_str("</div>");
+    h
 }
 
 fn code_block_html(lang: &str, attrs: &[(String, String)], code: &str, sp: &str) -> String {
@@ -529,6 +746,9 @@ fn render_import(ctx: &Ctx, imp: &Import, sp: &str) -> String {
                 o.delimiter = Some('\t');
             }
             o.apply(&imp.attrs);
+            if let Some(t) = attr(&imp.attrs, "chart") {
+                return diagram_div(ctx, "chart", &csv::to_chart_json(&text, &o, t, attr(&imp.attrs, "title")), sp, "", &[]);
+            }
             format!("<div class=\"ml-block\"{sp}>{}</div>", csv::to_html(&text, &o))
         }
         "md" | "markdown" | "mdown" | "mkd" => {
@@ -538,14 +758,23 @@ fn render_import(ctx: &Ctx, imp: &Import, sp: &str) -> String {
             let child = ctx.child(path.clone());
             format!("<div class=\"ml-import\"{sp}>{}</div>", render(&text, &child).html)
         }
-        "mermaid" | "mmd" => diagram_div("mermaid", &text, sp, ""),
+        "mermaid" | "mmd" => diagram_div(ctx, "mermaid", &text, sp, "", &imp.attrs),
         "html" | "htm" => format!("<div class=\"ml-import\"{sp}>{}</div>", rewrite_raw_html(&ctx.child(path.clone()), &text)),
         _ => {
             let lines: Vec<&str> = text.lines().collect();
             let begin = attr(&imp.attrs, "line_begin").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(lines.len());
             let end = attr(&imp.attrs, "line_end").and_then(|v| v.parse::<isize>().ok()).map(|v| if v < 0 { (lines.len() as isize + v).max(0) as usize } else { v as usize }).unwrap_or(lines.len()).clamp(begin, lines.len());
             let snippet = lines[begin..end].join("\n");
-            let lang = attr(&imp.attrs, "as").map(|s| s.to_string()).unwrap_or_else(|| lang_for_ext(&ext).to_string());
+            let name = path.to_string_lossy().to_ascii_lowercase();
+            let lang = attr(&imp.attrs, "as").map(|s| s.to_string()).unwrap_or_else(|| {
+                if name.ends_with(".vl.json") || name.ends_with(".vega-lite.json") {
+                    "vega-lite".into()
+                } else if name.ends_with(".vg.json") || name.ends_with(".vega.json") {
+                    "vega".into()
+                } else {
+                    lang_for_ext(&ext).to_string()
+                }
+            });
             if let Some(h) = render_fence(ctx, &lang, &imp.attrs, &snippet, sp) {
                 return h;
             }
@@ -733,7 +962,7 @@ mod tests {
     use super::*;
 
     fn ctx(s: &Settings) -> Ctx<'_> {
-        Ctx { settings: s, file: std::env::temp_dir().join("t.md"), roots: vec![], sourcepos: true, depth: 0 }
+        Ctx::new(s, std::env::temp_dir().join("t.md"), vec![])
     }
 
     #[test]
@@ -792,7 +1021,7 @@ mod tests {
         std::fs::write(dir.join("sub/part.md"), "## Part\n\n![p](pic.png)\n").unwrap();
         std::fs::write(dir.join("code.py"), "a=1\nb=2\nc=3\n").unwrap();
         let s = Settings::default();
-        let c = Ctx { settings: &s, file: dir.join("doc.md"), roots: vec![dir.clone()], sourcepos: true, depth: 0 };
+        let c = Ctx::new(&s, dir.join("doc.md"), vec![dir.clone()]);
         let md = "# Doc\n\n[TOC]\n\n@import \"data.csv\" {caption=\"Stock\"}\n\n@import \"sub/part.md\"\n\n@import \"code.py\" {line_begin=1 line_end=2}\n\n![img](<images/a b.png>) [link](other.md#x) [web](https://x.org)\n\n<img src=\"rel.png\">\n";
         let r = render(md, &c);
         assert!(r.html.contains("<caption>Stock</caption>"), "{}", r.html);

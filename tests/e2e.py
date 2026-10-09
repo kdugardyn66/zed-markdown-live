@@ -72,10 +72,11 @@ class Env:
 
 class Lsp:
     def __init__(self, env, settings=None):
-        self.p = subprocess.Popen([str(BIN)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env.env)
+        self.p = subprocess.Popen([str(BIN)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=None if os.environ.get("DEBUG") else subprocess.DEVNULL, env=env.env)
         self.id = 0
         self.send("initialize", {"processId": None, "rootUri": "file://" + str(env.work), "capabilities": {},
-                                 "initializationOptions": settings or {"browser": ["true"]}}, req=True)
+                                 "initializationOptions": settings or dict({"browser": ["true"]}, **json.loads(os.environ.get("ML_TEST_SETTINGS", "{}")))}, req=True)
         self.read_response()
         self.send("initialized", {})
 

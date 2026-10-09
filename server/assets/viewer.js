@@ -427,7 +427,7 @@
     renderPlugins(false);
   };
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); renderPlugins(false); });
-  $('btn-refresh').onclick = () => { post('/api/refresh'); document.querySelectorAll('[data-done]').forEach((e) => delete e.dataset.done); renderPlugins(true); };
+  $('btn-refresh').onclick = () => { post('/api/refresh', { hard: true }); document.querySelectorAll('[data-done]').forEach((e) => delete e.dataset.done); renderPlugins(true); };
   $('btn-print').onclick = () => window.print();
   const zoom = (z) => { state.zoom = Math.min(3, Math.max(0.5, Math.round(z * 10) / 10)); store.set('zoom', state.zoom); applyZoom(); };
   $('btn-zoom-in').onclick = () => zoom(state.zoom + 0.1);
@@ -452,5 +452,6 @@
   renderToc();
   // Later versions add their own scripts (exports, slides…) before polling starts.
   (window.ML_EXTRA || []).forEach((f) => { try { f(ML); } catch (e) { console.error(e); } });
-  poll();
+  // Start after every script of the page ran (plugins.js registers more renderers).
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', poll); else poll();
 })();

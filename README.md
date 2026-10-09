@@ -8,8 +8,9 @@ the cursor.
 ```
  ┌──────── Zed ────────┐  LSP (stdio)  ┌────── markdown-live (Rust) ───────┐  HTTP, long-poll  ┌──── Chromium ────┐
  │ extension (WASM)    │──────────────▶│ comrak → HTML, @import, CSV, TOC  │──────────────────▶│ viewer: Mermaid, │
- │ starts the server   │ text, cursor  │ preview server on 127.0.0.1+token │   rendered HTML   │ KaTeX, hljs      │
- └─────────────────────┘               └───────────────────────────────────┘                   └──────────────────┘
+ │ starts the server   │ text, cursor  │ PlantUML/Kroki + code chunks (bg) │   rendered HTML   │ KaTeX/MathJax,   │
+ └─────────────────────┘               │ preview server on 127.0.0.1+token │                   │ Viz, Vega, Chart │
+                                       └───────────────────────────────────┘                   └──────────────────┘
 ```
 
 Everything runs locally: the browser libraries are **bundled in the binary**, so
@@ -26,7 +27,7 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | 0.3.0 | Images (bmp, jpeg, png, svg, heic…) and videos (mp4, mkv, webm, mov, avi) |
 | 0.4.0 | Slides (`<!-- slide -->`) and exports: docx, odt, pdf, html, pptx, odp |
 
-This is **0.1.0**.
+This is **0.2.0**.
 
 ## Install
 
@@ -65,6 +66,38 @@ files are cut at `csvMaxRows` (5000).
 
 See `examples/v1-core.md` for a tour.
 
+## Diagrams, charts, chemistry and code (0.2.0)
+
+| Block | Rendered by | Notes |
+|---|---|---|
+| ```` ```plantuml ```` / `puml`, `ditaa`, `salt`, `mindmap`, `gantt`, `wbs` | PlantUML on **your Java** (server side) | `@startuml` is added when missing. Finds `plantuml.jar` from settings, `$PLANTUML_JAR`, Homebrew, or PlantUML Live's copy. `"plantumlRender": "online"` uses `plantumlServer` instead |
+| ```` ```dot ```` / `graphviz`, `neato`, `circo`, `fdp`, `twopi` | Viz.js (Graphviz in WebAssembly) | `{engine=neato}` |
+| ```` ```vega-lite ```` / ```` ```vega ```` | Vega-Embed | `data.url` is relative to the document |
+| ```` ```wavedrom ```` | WaveDrom | timing diagrams |
+| ```` ```flow ```` | flowchart.js | MPE's `flow` syntax |
+| ```` ```chart ```` | Chart.js | the Chart.js config; also `@import "data.csv" {chart="bar" title="…"}` and ```` ```csv {chart="line"} ```` |
+| ```` ```plotly ```` | Plotly | `{data, layout}` |
+| ```` ```smiles ```` | SmilesDrawer | one molecule per line: `CCO ethanol` |
+| ```` ```kroki-<type> ```` / `{kroki=true}` | [Kroki](https://kroki.io) (**online**, only for these blocks) | d2, bpmn, nomnoml, svgbob, excalidraw, … |
+| `$\ce{H2O}$`, `$\pu{12 kJ/mol}$` | mhchem in KaTeX and MathJax | chemical formulas and equations |
+| any math | KaTeX (default) or **MathJax** | key **M** or the KaTeX/MathJax button switches; `"math": "mathjax"` as default |
+
+The JSON-based blocks accept relaxed JSON (comments, unquoted keys, single quotes,
+trailing commas). Nothing in them is evaluated as code.
+
+**Code chunks** (MPE syntax): ```` ```python {cmd=true} ````. They run in the
+document's folder, in the background (a slow chunk never blocks typing; it runs
+once the text has been still for 0.7 s).
+
+- `print()` output appears under the code; `{output="markdown"}`, `"html"` or `"none"`; `{hide=true}` hides the code.
+- **matplotlib / seaborn** figures (`plt.show()` or left open) appear as SVG; **Plotly** `fig.show()` appears as an interactive chart.
+- Python is `.venv/bin/python` from the workspace when present, else `python3` (setting `"python"`).
+  `bash`, `node`, `ruby`, `perl`, `Rscript`, `julia`, `php`, `lua` also run; `{cmd="/path/to/tool"}` picks the interpreter, `{args=["-x"]}` adds arguments.
+- **Off by default.** A banner offers "Run code chunks for this session"; `"enableScriptExecution": true` makes it permanent.
+- ⟳ (key R) runs chunks again and re-renders PlantUML.
+
+See `examples/v2-diagrams.md`.
+
 ## The viewer
 
 | Key | Action |
@@ -73,7 +106,8 @@ See `examples/v1-core.md` for a tour.
 | **S** | scroll sync on/off (preview follows the editor cursor) |
 | **D** | theme: settings → light → dark |
 | **+ / − / 0** | text size |
-| **R** | re-render (also re-reads imported files) |
+| **R** | re-render: re-reads imported files, re-runs code chunks, re-renders PlantUML |
+| **M** | math engine: KaTeX ↔ MathJax |
 | Cmd/Ctrl-P | print (or "Save as PDF") |
 
 - Only changed blocks are re-rendered (morphdom): typing never makes a diagram flicker.
@@ -103,6 +137,15 @@ In `~/.config/zed/settings.json`:
         "mermaidTheme": "auto",     // auto | default | dark | forest | neutral
         "csvMaxRows": 5000,
         "libraries": "bundled",     // bundled (offline) | cdn (jsDelivr)
+        "math": "katex",            // katex | mathjax
+        "plantumlRender": "local",  // local (Java) | online | auto (local when found)
+        "plantumlServer": "https://www.plantuml.com/plantuml",   // or a Kroki / self-hosted server
+        "plantumlJar": "",          // "" = autodetect
+        "java": "",
+        "krokiServer": "https://kroki.io",
+        "enableScriptExecution": false,  // run ```python {cmd=true} chunks without asking
+        "codeTimeout": 30,          // seconds per chunk
+        "python": "",               // "" = workspace .venv, else python3
         "port": 0                   // 0 = random
       }
       // "binary": { "path": "/Users/you/.cargo/bin/markdown-zed" }
@@ -135,6 +178,10 @@ that watches the file on disk.
   an open document; hidden folders (`.ssh`, `.git`, …) are refused.
 - The page has a strict Content-Security-Policy: only the viewer's own scripts
   run; `<script>` tags or `onclick=` handlers inside Markdown don't.
+- **Code chunks never run unless you allow them** (setting, banner, or the code
+  action "MarkDown Live: Run code chunks (this session)").
+- Nothing is sent online unless you ask: PlantUML is local by default, and Kroki is
+  only used for `kroki-…` blocks.
 
 ## Troubleshooting
 
@@ -143,6 +190,10 @@ that watches the file on disk.
 - **"`markdown-live` was not found"**: set `lsp.markdown-live.binary.path` to the
   output of `which markdown-zed` (`~/.cargo/bin` is often not on Zed's PATH).
 - **Wrong browser**: set `"browser"` (see Settings). `markdown-zed doctor` shows the choice.
+- **PlantUML says it needs Java**: `brew install plantuml` (installs Java too), or point
+  `"plantumlJar"` / `"java"` at your copies. `markdown-zed doctor` shows what it found.
+- **matplotlib not found**: code chunks use the workspace `.venv` when there is one;
+  install packages there, or set `"python"`.
 
 ## Development
 

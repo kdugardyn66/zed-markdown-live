@@ -144,9 +144,9 @@ pub fn embedded_text(path: &str) -> String {
 fn csp(app: &App, nonce: &str) -> String {
     let cdn = if app.settings().libraries == "cdn" { " https://cdn.jsdelivr.net" } else { "" };
     format!(
-        "default-src 'self'; script-src 'self' 'nonce-{nonce}'{cdn}; style-src 'self' 'unsafe-inline'{cdn}; \
+        "default-src 'self'; script-src 'self' 'nonce-{nonce}' 'unsafe-eval' 'wasm-unsafe-eval'{cdn}; style-src 'self' 'unsafe-inline'{cdn}; \
          font-src 'self' data:{cdn}; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; \
-         connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+         connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )
 }
 
@@ -246,7 +246,15 @@ fn handle(app: &Arc<App>, req: Request) {
             }
         }
         ("POST", "/api/refresh") => {
+            // the ⟳ button: also forget cached diagrams and code-chunk results
+            if read_json(&req).get("hard").and_then(|v| v.as_bool()).unwrap_or(false) {
+                app.jobs.clear();
+            }
             app.refresh();
+            req.respond(json_resp(200, &json!({"ok": true})))
+        }
+        ("POST", "/api/allow-scripts") => {
+            app.allow_scripts();
             req.respond(json_resp(200, &json!({"ok": true})))
         }
         _ => crate::http_ext::handle_extra(app, req, &path, &qs),

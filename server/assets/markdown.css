@@ -87,6 +87,28 @@
 .markdown-body .ml-front-matter { font-size: 13px; }
 .markdown-body .ml-cursor { box-shadow: -14px 0 0 -11px var(--cursor); }
 .markdown-body .ml-waiting { color: var(--fg-muted); }
+/* v2: server-rendered diagrams, charts, code chunks */
+.markdown-body .ml-server img.ml-svg { max-width: 100%; height: auto; }
+:root[data-theme="dark"] .markdown-body .ml-server img.ml-svg { background: #fff; border-radius: 6px; padding: 8px; }
+.markdown-body .ml-stale > :not(.ml-error) { opacity: .5; transition: opacity .2s; }
+.markdown-body .ml-placeholder, .markdown-body .ml-chunk-note { color: var(--fg-muted); font-size: 13px; padding: 10px; border: 1px dashed var(--border); border-radius: 6px; text-align: center; }
+.markdown-body .ml-chunk { margin-bottom: 16px; }
+.markdown-body .ml-chunk > pre.ml-code { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.markdown-body .ml-chunk-note { border-top: 0; border-radius: 0 0 6px 6px; text-align: left; }
+.markdown-body .ml-chunk-out { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; padding: 10px 14px; }
+.markdown-body .ml-chunk-out:empty { display: none; }
+.markdown-body .ml-chunk > .ml-chunk-out:first-child, .markdown-body .ml-chunk > .ml-chunk-note:first-child { border-top: 1px solid var(--border); border-radius: 6px; }
+.markdown-body .ml-chunk-out > :last-child { margin-bottom: 0; }
+.markdown-body .ml-chunk-out pre.ml-out, .markdown-body .ml-chunk-out pre.ml-stderr { background: transparent; padding: 0; margin: 0 0 8px; }
+.markdown-body pre.ml-stderr { color: var(--warning); }
+.markdown-body img.ml-figure { display: block; max-width: 100%; margin: 6px auto; background: #fff; border-radius: 4px; }
+.markdown-body .ml-chart-box { position: relative; max-width: 760px; margin: 0 auto; }
+.markdown-body .ml-plotly-box { min-height: 360px; }
+.markdown-body .ml-smiles-row { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+.markdown-body .ml-smiles-row figure { margin: 0; text-align: center; }
+.markdown-body .ml-smiles-row figcaption { font-size: 13px; color: var(--fg-muted); }
+:root[data-theme="dark"] .markdown-body .ml-wavedrom svg { filter: invert(.88) hue-rotate(180deg); }
+.markdown-body mjx-container[display="true"] { overflow-x: auto; overflow-y: hidden; }
 @media print {
   .markdown-body { max-width: none; padding: 0; font-size: 11pt; }
   .markdown-body pre, .markdown-body .ml-diagram, .markdown-body table, .markdown-body img { break-inside: avoid; }

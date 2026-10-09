@@ -20,3 +20,4 @@ fonts/KaTeX_Size2-Regular.woff2 dist/fonts/KaTeX_Size2-Regular.woff2
 fonts/KaTeX_Size3-Regular.woff2 dist/fonts/KaTeX_Size3-Regular.woff2
 fonts/KaTeX_Size4-Regular.woff2 dist/fonts/KaTeX_Size4-Regular.woff2
 fonts/KaTeX_Typewriter-Regular.woff2 dist/fonts/KaTeX_Typewriter-Regular.woff2
+contrib/mhchem.min.js dist/contrib/mhchem.min.js

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — diagrams, charts, chemistry, code
+
+- PlantUML (also ditaa/salt/mindmap/gantt/wbs) rendered with your local Java, or online on request.
+- Graphviz (Viz.js), Vega and Vega-Lite, WaveDrom, flowchart.js, Chart.js, Plotly, SMILES — bundled.
+- Charts straight from CSV: `@import "data.csv" {chart="bar"}`.
+- Kroki for any other diagram type (online, opt-in per block).
+- MathJax next to KaTeX (switch with M); mhchem (`\ce`, `\pu`) in both.
+- Code chunks (`{cmd=true}`): Python with matplotlib/seaborn figures and Plotly charts,
+  bash, node, R, …; background jobs, debounced, off until you allow them.
+- Background job queue: slow blocks never block typing; the previous picture stays (dimmed)
+  while a block re-renders; PlantUML results are cached on disk.
+
 ## 0.1.0 — core
 
 - The server binary is `markdown-zed` (in `~/.cargo/bin`); everything else is named `markdown-live`. Preview key: Option-M (Alt-M).

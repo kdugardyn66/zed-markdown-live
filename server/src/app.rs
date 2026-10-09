@@ -71,6 +71,8 @@ pub struct App {
     pub jobs: Arc<crate::jobs::Jobs>,
     /// "Run code chunks" was allowed in the preview for this session.
     pub scripts_allowed: AtomicBool,
+    /// The preview browser plays H.264/AAC (reported by the page).
+    pub h264: AtomicBool,
 }
 
 impl App {
@@ -88,6 +90,7 @@ impl App {
             started: Instant::now(),
             jobs: crate::jobs::Jobs::new(),
             scripts_allowed: AtomicBool::new(false),
+            h264: AtomicBool::new(true),
         });
         // A finished background job: re-render so the result shows up.
         let weak = Arc::downgrade(&app);
@@ -322,6 +325,7 @@ impl App {
             let settings = self.settings();
             let mut ctx = Ctx::new(&settings, target.clone(), roots);
             ctx.jobs = Some(self.jobs.clone());
+            ctx.h264 = self.h264.load(Ordering::SeqCst);
             ctx.allow_scripts = settings.enable_script_execution || self.scripts_allowed.load(Ordering::SeqCst);
             self.jobs.begin(&target);
             let r = markdown::render(&text, &ctx);

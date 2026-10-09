@@ -27,7 +27,7 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | 0.3.0 | Images (bmp, jpeg, png, svg, heic…) and videos (mp4, mkv, webm, mov, avi) |
 | 0.4.0 | Slides (`<!-- slide -->`) and exports: docx, odt, pdf, html, pptx, odp |
 
-This is **0.2.0**.
+This is **0.3.0**.
 
 ## Install
 
@@ -97,6 +97,32 @@ once the text has been still for 0.7 s).
 - ⟳ (key R) runs chunks again and re-renders PlantUML.
 
 See `examples/v2-diagrams.md`.
+
+## Pictures and videos (0.3.0)
+
+```markdown
+![logo](img/logo.png){width=200}            pictures: png, jpeg, gif, bmp, svg, webp, avif, heic/heif, tiff
+![Holiday](photos/IMG_0042.HEIC "Caption")   alone in a paragraph + title → figure with caption
+![demo](videos/demo.mkv){width=640}          videos: mp4, webm, mkv, mov, avi, wmv, flv, mpg, m4v, ogv
+![intro](clip.mp4){autoplay loop start=12 poster="cover.jpg"}
+![talk](https://youtu.be/VIDEO_ID)           YouTube / Vimeo links become players
+![song](audio/theme.mp3)                     audio: mp3, wav, ogg, m4a, flac, opus
+@import "photos/IMG_0042.HEIC" {width=300}   MPE @import works for all of these
+```
+
+- **HEIC/HEIF and TIFF** are converted to JPEG/PNG on the fly: macOS `sips` (built in);
+  elsewhere ImageMagick, `heif-convert`, ffmpeg or Pillow — whichever is installed.
+- **Videos**: MarkDown Live checks what's inside with `ffprobe`. Files the browser can
+  play are served as they are (with seeking). Others are **remuxed** (seconds, no quality
+  loss: e.g. H.264 in MKV → MP4) or **transcoded** in the background, with a
+  "⏳ Converting…" placeholder meanwhile. Needs `ffmpeg` (`brew install ffmpeg`).
+- **Chrome vs Chromium**: Google Chrome, Edge and Brave play H.264/AAC (MP4, MOV).
+  Open-source **Chromium** builds don't, so for Chromium those videos are converted to
+  VP9/Opus WebM (the page tells the server what it can play). For big videos, prefer
+  WebM files or point `"browser"` at Google Chrome.
+- Converted copies are cached in `~/Library/Caches/markdown-live/media/`
+  (`~/.cache/markdown-live/media/` on Linux), keyed by file size and date.
+- Click a picture to see it full size (Esc closes).
 
 ## The viewer
 
@@ -181,7 +207,7 @@ that watches the file on disk.
 - **Code chunks never run unless you allow them** (setting, banner, or the code
   action "MarkDown Live: Run code chunks (this session)").
 - Nothing is sent online unless you ask: PlantUML is local by default, and Kroki is
-  only used for `kroki-…` blocks.
+  only used for `kroki-…` blocks. YouTube/Vimeo players load only when you link a video.
 
 ## Troubleshooting
 
@@ -192,6 +218,8 @@ that watches the file on disk.
 - **Wrong browser**: set `"browser"` (see Settings). `markdown-zed doctor` shows the choice.
 - **PlantUML says it needs Java**: `brew install plantuml` (installs Java too), or point
   `"plantumlJar"` / `"java"` at your copies. `markdown-zed doctor` shows what it found.
+- **A video stays on "Converting…"** or shows a note: install ffmpeg (`brew install ffmpeg`);
+  `markdown-zed doctor` shows whether it was found.
 - **matplotlib not found**: code chunks use the workspace `.venv` when there is one;
   install packages there, or set `"python"`.
 

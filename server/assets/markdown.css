@@ -109,9 +109,19 @@
 .markdown-body .ml-smiles-row figcaption { font-size: 13px; color: var(--fg-muted); }
 :root[data-theme="dark"] .markdown-body .ml-wavedrom svg { filter: invert(.88) hue-rotate(180deg); }
 .markdown-body mjx-container[display="true"] { overflow-x: auto; overflow-y: hidden; }
+/* v3: pictures, videos, audio */
+.markdown-body img:not(.ml-svg):not(.ml-figure) { cursor: zoom-in; }
+.markdown-body video.ml-video { max-width: 100%; height: auto; border-radius: 6px; background: #000; vertical-align: middle; }
+.markdown-body audio.ml-audio { width: min(100%, 480px); vertical-align: middle; }
+.markdown-body iframe.ml-embed { width: 100%; max-width: 720px; aspect-ratio: 16 / 9; height: auto; border: 0; border-radius: 8px; display: block; }
+.markdown-body figure.ml-figure { margin: 0 0 16px; text-align: center; }
+.markdown-body figure.ml-figure figcaption { color: var(--fg-muted); font-size: 14px; margin-top: 6px; }
+.markdown-body .ml-media { margin-bottom: 16px; }
+.markdown-body .ml-media-pending { display: inline-block; color: var(--fg-muted); font-size: 13px; padding: 24px 16px; border: 1px dashed var(--border); border-radius: 6px; min-width: 260px; text-align: center; }
 @media print {
   .markdown-body { max-width: none; padding: 0; font-size: 11pt; }
-  .markdown-body pre, .markdown-body .ml-diagram, .markdown-body table, .markdown-body img { break-inside: avoid; }
+  .markdown-body pre, .markdown-body .ml-diagram, .markdown-body table, .markdown-body img, .markdown-body figure { break-inside: avoid; }
+  .markdown-body video, .markdown-body audio, .markdown-body iframe.ml-embed { display: none; }
   .markdown-body .ml-cursor { box-shadow: none; }
   .markdown-body .ml-copy { display: none; }
   .markdown-body .ml-csv { max-height: none; overflow: visible; }

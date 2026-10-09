@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — pictures and videos
+
+- Pictures: png, jpeg, gif, bmp, svg, webp, avif natively; HEIC/HEIF and TIFF converted
+  (sips / ImageMagick / heif-convert / ffmpeg / Pillow), cached.
+- `{width=… height=… .class style=…}` on pictures; a titled picture alone in a paragraph becomes a figure.
+- Videos: mp4, webm, mkv, mov, avi, wmv, flv, mpg…; ffprobe decides between playing as is,
+  remuxing or transcoding (background job, cached). H.264 → VP9 WebM for Chromium builds
+  without proprietary codecs.
+- Audio files, YouTube/Vimeo embeds, `@import` for all media, HTTP range requests (seeking), lightbox.
+
 ## 0.2.0 — diagrams, charts, chemistry, code
 
 - PlantUML (also ditaa/salt/mindmap/gantt/wbs) rendered with your local Java, or online on request.

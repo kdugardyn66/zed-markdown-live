@@ -14,6 +14,7 @@ use crate::util;
 use comrak::nodes::{AstNode, NodeHtmlBlock, NodeValue};
 use comrak::{Anchorizer, Arena, Options};
 use crate::jobs::Jobs;
+use crate::media;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -58,6 +59,8 @@ pub struct Ctx<'s> {
     pub blocked_chunks: Rc<Cell<usize>>,
     /// Jobs still running for this render.
     pub pending: Rc<Cell<usize>>,
+    /// The browser plays H.264/AAC (Chrome yes, open-source Chromium no).
+    pub h264: bool,
 }
 
 impl<'s> Ctx<'s> {
@@ -74,6 +77,7 @@ impl<'s> Ctx<'s> {
             ordinals: Rc::new(RefCell::new(HashMap::new())),
             blocked_chunks: Rc::new(Cell::new(0)),
             pending: Rc::new(Cell::new(0)),
+            h264: true,
         }
     }
     pub fn base_dir(&self) -> PathBuf {
@@ -92,6 +96,7 @@ impl<'s> Ctx<'s> {
             ordinals: self.ordinals.clone(),
             blocked_chunks: self.blocked_chunks.clone(),
             pending: self.pending.clone(),
+            h264: self.h264,
         }
     }
     /// "plantuml#2": the n-th block of a kind in this render.
@@ -712,28 +717,149 @@ fn code_block_html(lang: &str, attrs: &[(String, String)], code: &str, sp: &str)
     format!("<pre class=\"ml-code {}\"{sp}{hl}><code class=\"{lang_cls}\">{}</code></pre>", cls.join(" "), escape_html(code))
 }
 
-const IMAGE_EXT: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "bmp", "ico", "apng"];
+// ------------------------------------------------------------------ pictures, video, audio
+
+/// URL under which the preview server serves a converted copy (HEIC → JPEG, MKV → MP4 …).
+pub fn media_url(p: &Path) -> String {
+    let s = p.to_string_lossy().replace('\\', "/");
+    let s = if s.starts_with('/') { s } else { format!("/{s}") };
+    format!("/media{}", util::percent_encode_path(&s))
+}
+
+fn is_media(ext: &str) -> bool {
+    media::is_image(ext) || media::VIDEO.contains(&ext) || media::AUDIO.contains(&ext)
+}
+
+/// HTML attributes from `{width=300 .round #x style="…" autoplay}`.
+fn media_attrs(attrs: &[(String, String)], video: bool) -> String {
+    let mut out = String::new();
+    let cls = classes(attrs);
+    if !cls.is_empty() {
+        out.push_str(&format!(" class=\"{}\"", escape_html(&cls.join(" "))));
+    }
+    for (k, v) in attrs {
+        let k = k.as_str();
+        let ok = matches!(k, "width" | "height" | "style" | "id" | "align" | "loading")
+            || (video && matches!(k, "autoplay" | "loop" | "muted" | "playsinline" | "preload"));
+        if ok {
+            if (v == "true" || v.is_empty()) && video {
+                out.push_str(&format!(" {k}"));
+            } else {
+                let v = if matches!(k, "width" | "height") && v.chars().all(|c| c.is_ascii_digit()) { v.clone() } else { v.clone() };
+                out.push_str(&format!(" {k}=\"{}\"", escape_html(&v)));
+            }
+        }
+    }
+    if video && attrs.iter().any(|(k, _)| k == "autoplay") && !attrs.iter().any(|(k, _)| k == "muted") {
+        out.push_str(" muted"); // browsers only autoplay muted videos
+    }
+    out
+}
+
+/// `<img>`, `<video>`, `<audio>` or an embedded player for an image-syntax link.
+pub fn media_html(ctx: &Ctx, url: &str, alt: &str, title: &str, attrs: &[(String, String)]) -> String {
+    let ext = ext_of(url);
+    let title_attr = if title.is_empty() { String::new() } else { format!(" title=\"{}\"", escape_html(title)) };
+    let is_video = media::VIDEO.contains(&ext.as_str());
+    let extra = media_attrs(attrs, is_video);
+    let start = attr(attrs, "start").map(|s| format!("#t={}", escape_html(s))).unwrap_or_default();
+    let poster = attr(attrs, "poster").map(|p| format!(" poster=\"{}\"", escape_html(&rewrite_url(ctx, p)))).unwrap_or_default();
+    let video_tag = |src: &str| {
+        format!("<video class=\"ml-video\" controls preload=\"metadata\" src=\"{}{start}\"{poster}{title_attr}{extra}>{}</video>", escape_html(src), escape_html(alt))
+    };
+    let audio_tag = |src: &str| format!("<audio class=\"ml-audio\" controls preload=\"metadata\" src=\"{}\"{title_attr}{extra}></audio>", escape_html(src));
+    let img_tag = |src: &str| format!("<img src=\"{}\" alt=\"{}\"{title_attr}{extra}>", escape_html(src), escape_html(alt));
+    if has_scheme(url) {
+        if let Some(embed) = media::embed_url(url) {
+            return format!("<iframe class=\"ml-embed\" src=\"{}\" title=\"{}\" allow=\"fullscreen; picture-in-picture\" allowfullscreen{extra}></iframe>", escape_html(&embed), escape_html(alt));
+        }
+        if is_video {
+            return video_tag(url);
+        }
+        if media::AUDIO.contains(&ext.as_str()) {
+            return audio_tag(url);
+        }
+        return img_tag(url);
+    }
+    let path = resolve(ctx, url);
+    if media::IMAGE_CONVERT.contains(&ext.as_str()) {
+        return img_tag(&media_url(&path));
+    }
+    if media::AUDIO.contains(&ext.as_str()) {
+        return audio_tag(&fs_url(&path));
+    }
+    if !is_video {
+        let frag = url.find('#').map(|i| &url[i..]).unwrap_or("");
+        return img_tag(&format!("{}{frag}", fs_url(&path)));
+    }
+    if !path.is_file() {
+        return error_box(&format!("video not found: {}", path.display()), "");
+    }
+    let plan = media::video_plan(&path, ctx.h264);
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    match plan {
+        media::Plan::Direct => video_tag(&fs_url(&path)),
+        media::Plan::NoTool => {
+            let playable = if ctx.h264 { matches!(ext.as_str(), "mp4" | "m4v" | "webm" | "ogv" | "mov") } else { matches!(ext.as_str(), "webm" | "ogv") };
+            let note = if playable { String::new() } else { format!("<span class=\"ml-note\">.{ext} may not play in this browser — install ffmpeg so MarkDown Live can convert it.</span>") };
+            format!("{}{note}", video_tag(&fs_url(&path)))
+        }
+        media::Plan::Remux(_) | media::Plan::Transcode(_) => {
+            let target = media::video_target(&path, &plan).unwrap();
+            if target.is_file() {
+                return video_tag(&media_url(&path));
+            }
+            let what = if matches!(plan, media::Plan::Transcode(_)) { "Converting" } else { "Preparing" };
+            let key = hash(&format!("video\n{}", target.display()));
+            let p2 = path.clone();
+            let plan2 = plan.clone();
+            let job: crate::jobs::JobFn = Box::new(move || media::convert_video(&p2, &plan2).map(|p| p.to_string_lossy().to_string()));
+            let res = match &ctx.jobs {
+                Some(j) => match j.get(&ctx.doc, &ctx.slot("video"), &key, std::time::Duration::from_millis(100), false, || job) {
+                    crate::jobs::Lookup::Ready(r) => r,
+                    crate::jobs::Lookup::Pending(_) => {
+                        ctx.pending.set(ctx.pending.get() + 1);
+                        return format!("<span class=\"ml-media-pending\">⏳ {what} {} for the browser (ffmpeg)…</span>", escape_html(&name));
+                    }
+                },
+                None => crate::jobs::run_now(|| job),
+            };
+            match res {
+                Ok(_) => video_tag(&media_url(&path)),
+                Err(e) => error_box(&e, ""),
+            }
+        }
+    }
+}
+
+fn node_attrs(node: &AstNode) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if let Some(a) = node.data().attrs.as_ref() {
+        if let Some(id) = &a.id {
+            out.push(("id".to_string(), id.clone()));
+        }
+        for c in &a.classes {
+            out.push(("class".to_string(), c.clone()));
+        }
+        out.extend(a.pairs.iter().cloned());
+    }
+    out
+}
+
 
 /// `@import "file"`: tables, images, Markdown, diagrams, code.
 fn render_import(ctx: &Ctx, imp: &Import, sp: &str) -> String {
     let p = imp.path.trim();
     if has_scheme(p) {
-        let ext = ext_of(p);
-        if IMAGE_EXT.contains(&ext.as_str()) {
-            return format!("<p{sp}><img src=\"{}\" alt=\"\"></p>", escape_html(p));
+        if is_media(&ext_of(p)) || media::embed_url(p).is_some() {
+            return format!("<div class=\"ml-media\"{sp}>{}</div>", media_html(ctx, p, attr(&imp.attrs, "alt").unwrap_or(""), attr(&imp.attrs, "title").unwrap_or(""), &imp.attrs));
         }
-        return format!("<p class=\"ml-note\"{sp}>@import of URLs is only supported for images: <a href=\"{0}\">{0}</a></p>", escape_html(p));
+        return format!("<p class=\"ml-note\"{sp}>@import of URLs works for pictures, videos and YouTube/Vimeo links: <a href=\"{0}\">{0}</a></p>", escape_html(p));
     }
     let path = resolve(ctx, p);
     let ext = ext_of(&path.to_string_lossy());
-    if IMAGE_EXT.contains(&ext.as_str()) {
-        let mut extra = String::new();
-        for k in ["width", "height", "title", "alt"] {
-            if let Some(v) = attr(&imp.attrs, k) {
-                extra.push_str(&format!(" {k}=\"{}\"", escape_html(v)));
-            }
-        }
-        return format!("<p{sp}><img src=\"{}\"{extra}></p>", fs_url(&path));
+    if is_media(&ext) {
+        return format!("<div class=\"ml-media\"{sp}>{}</div>", media_html(ctx, p, attr(&imp.attrs, "alt").unwrap_or(""), attr(&imp.attrs, "title").unwrap_or(""), &imp.attrs));
     }
     let text = match std::fs::read(&path) {
         Ok(b) => String::from_utf8_lossy(&b).to_string(),
@@ -893,9 +1019,30 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
                 replace_with_html(node, html + "\n");
             }
             NodeValue::Image(link) => {
-                let url = rewrite_url(ctx, &link.url);
-                if let NodeValue::Image(ref mut l) = node.data_mut().value {
-                    l.url = url;
+                if node.parent().is_none() {
+                    continue; // already turned into a <figure>
+                }
+                let alt = node.collect_text();
+                let html = media_html(ctx, &link.url, &alt, &link.title, &node_attrs(node));
+                while let Some(c) = node.first_child() {
+                    c.detach();
+                }
+                node.data_mut().value = NodeValue::HtmlInline(html);
+            }
+            NodeValue::Paragraph => {
+                // A picture/video alone in its paragraph with a title becomes a figure with a caption.
+                let kids: Vec<_> = node.children().filter(|c| !matches!(&c.data().value, NodeValue::SoftBreak | NodeValue::LineBreak)).collect();
+                if kids.len() == 1 {
+                    let img = kids[0];
+                    let v = img.data().value.clone();
+                    if let NodeValue::Image(link) = v {
+                        if !link.title.trim().is_empty() {
+                            let alt = img.collect_text();
+                            let html = media_html(ctx, &link.url, &alt, "", &node_attrs(img));
+                            let sp = sp_attr(ctx, node);
+                            replace_with_html(node, format!("<figure class=\"ml-figure\"{sp}>{html}<figcaption>{}</figcaption></figure>\n", escape_html(&link.title)));
+                        }
+                    }
                 }
             }
             NodeValue::Link(link) => {

@@ -21,6 +21,7 @@ mod http_ext;
 mod lsp;
 mod lsp_ext;
 mod markdown;
+mod media;
 mod setup;
 mod util;
 mod web;

@@ -25,5 +25,6 @@ pub fn doctor(s: &Settings) {
     println!("  jar         : {}", diagrams::find_jar(s).map(|p| p.display().to_string()).unwrap_or_else(|| "not found".into()));
     println!("kroki         : {} (only for ```kroki-…``` blocks)", s.kroki_server);
     let py = crate::util::which("python3").map(|p| p.display().to_string()).unwrap_or_else(|| "not found".into());
+    println!("ffmpeg        : {}", crate::media::ffmpeg().map(|p| p.display().to_string()).unwrap_or_else(|| "not found — needed to convert MKV/AVI/… videos (brew install ffmpeg)".into()));
     println!("code chunks   : {} (python: {py})", if s.enable_script_execution { "enabled" } else { "off — enable with \"enableScriptExecution\": true or per session in the preview" });
 }

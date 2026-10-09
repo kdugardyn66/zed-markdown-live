@@ -29,6 +29,19 @@ pub struct View {
     pub blocked_chunks: usize,
     /// Server-side blocks still rendering.
     pub pending: usize,
+    /// `<!-- slide -->` markers and reveal.js options.
+    pub slides: usize,
+    pub deck: Value,
+}
+
+/// An export asked for by the editor/CLI; the preview page builds the snapshot.
+pub struct ExportJob {
+    pub id: u64,
+    pub format: String,
+    pub file: PathBuf,
+    pub result: Option<Result<PathBuf, String>>,
+    /// A preview page has received the request.
+    pub delivered: bool,
 }
 
 #[derive(Default)]
@@ -49,6 +62,8 @@ pub struct State {
     pub last_seen: Option<Instant>,
     pub disk_mtime: Option<SystemTime>,
     pub shutdown: bool,
+    pub exports: Vec<ExportJob>,
+    pub export_seq: u64,
 }
 
 pub type Notifier = Box<dyn Fn(Value) + Send + Sync>;
@@ -265,6 +280,9 @@ impl App {
             "headings": if include_html { Some(&v.headings) } else { None },
             "renderMs": v.render_ms as u64,
             "blockedChunks": v.blocked_chunks,
+            "slides": v.slides,
+            "deck": v.deck,
+            "exportRequest": st.exports.iter().find(|e| e.result.is_none() && st.view.file.as_ref() == Some(&e.file)).map(|e| json!({"id": e.id, "format": e.format, "flavour": crate::export::flavour(&e.format)})),
             "pending": v.pending,
             "focus": v.focus,
             "cursorLine": st.cursor_line,
@@ -330,6 +348,7 @@ impl App {
             self.jobs.begin(&target);
             let r = markdown::render(&text, &ctx);
             let (blocked, pending) = (ctx.blocked_chunks.get(), ctx.pending.get());
+            let (slides, deck) = (r.slides, r.deck.clone());
             let ms = t0.elapsed().as_millis();
             let mut st = self.state.lock().unwrap();
             if st.target.as_ref() != Some(&target) {
@@ -342,8 +361,114 @@ impl App {
             st.view.render_ms = ms;
             st.view.blocked_chunks = blocked;
             st.view.pending = pending;
+            st.view.slides = slides;
+            st.view.deck = deck;
             self.bump(&mut st);
         }
+    }
+
+    // ------------------------------------------------------------ v4: slides and exports
+
+    /// Inserts `<!-- slide -->` at the start of `line` (in the editor through LSP, else in the file).
+    pub fn insert_slide(&self, path: &Path, line: usize) -> Result<(), String> {
+        let marker = "<!-- slide -->\n\n";
+        let open = self.state.lock().unwrap().docs.contains_key(path);
+        if self.mode == Mode::Lsp && open {
+            let id = self.next_request.fetch_add(1, Ordering::SeqCst);
+            let pos = json!({"line": line, "character": 0});
+            self.send(json!({
+                "jsonrpc": "2.0", "id": format!("ml-{id}"), "method": "workspace/applyEdit",
+                "params": {"label": "Insert new slide", "edit": {"changes": {path_to_uri(path): [{"range": {"start": pos, "end": pos}, "newText": marker}]}}}
+            }));
+            return Ok(());
+        }
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut lines: Vec<&str> = text.split('\n').collect();
+        let at = line.min(lines.len());
+        lines.insert(at, "<!-- slide -->\n");
+        std::fs::write(path, lines.join("\n")).map_err(|e| e.to_string())?;
+        self.refresh();
+        Ok(())
+    }
+
+    /// Asks the preview page for a snapshot and converts it. Opens a hidden headless
+    /// browser when no preview is connected. Blocks until done (or 3 minutes).
+    pub fn export(&self, path: &Path, format: &str) -> Result<PathBuf, String> {
+        if !crate::export::FORMATS.contains(&format) {
+            return Err(format!("unknown format {format}; use one of {}", crate::export::FORMATS.join(", ")));
+        }
+        let path = norm_path(path);
+        let (id, connected) = {
+            let mut st = self.state.lock().unwrap();
+            st.export_seq += 1;
+            let id = st.export_seq;
+            st.exports.push(ExportJob { id, format: format.to_string(), file: path.clone(), result: None, delivered: false });
+            if st.target.as_ref() != Some(&path) {
+                st.target = Some(path.clone());
+                st.disk_mtime = None;
+                self.mark_dirty(&mut st);
+            }
+            self.bump(&mut st);
+            (id, App::client_connected(&st))
+        };
+        // A page that looks connected may be gone (closed tab): if nobody picks the
+        // request up within a few seconds, render it in a hidden browser.
+        let mut headless = None;
+        let picked_up = connected && {
+            let until = Instant::now() + Duration::from_secs(4);
+            let mut st = self.state.lock().unwrap();
+            loop {
+                if st.exports.iter().any(|e| e.id == id && (e.delivered || e.result.is_some())) {
+                    break true;
+                }
+                if Instant::now() >= until {
+                    break false;
+                }
+                st = self.changed.wait_timeout(st, Duration::from_millis(200)).unwrap().0;
+            }
+        };
+        if !picked_up {
+            headless = Some(crate::export_page::open_headless(&self.settings(), &self.url())?);
+        }
+        let deadline = Instant::now() + Duration::from_secs(180);
+        let mut st = self.state.lock().unwrap();
+        let res = loop {
+            if let Some(i) = st.exports.iter().position(|e| e.id == id && e.result.is_some()) {
+                break st.exports.remove(i).result.unwrap();
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() || st.shutdown {
+                st.exports.retain(|e| e.id != id);
+                break Err("the preview page did not answer (is it open?)".into());
+            }
+            st = self.changed.wait_timeout(st, left.min(Duration::from_millis(500))).unwrap().0;
+        };
+        drop(st);
+        if let Some(mut h) = headless {
+            let _ = h.kill();
+            let _ = h.wait();
+        }
+        res
+    }
+
+    /// The page delivered a snapshot: convert it.
+    pub fn export_snapshot(&self, id: Option<u64>, format: &str, snapshot: &str) -> Result<PathBuf, String> {
+        let file = {
+            let st = self.state.lock().unwrap();
+            match id.and_then(|id| st.exports.iter().find(|e| e.id == id)) {
+                Some(e) => e.file.clone(),
+                None => st.view.file.clone().ok_or("nothing to export")?,
+            }
+        };
+        let res = crate::export::convert(&self.settings(), &file, format, snapshot);
+        if let Some(id) = id {
+            let mut st = self.state.lock().unwrap();
+            if let Some(e) = st.exports.iter_mut().find(|e| e.id == id) {
+                e.result = Some(res.clone());
+            }
+            self.changed.notify_all();
+        }
+        res
     }
 
     pub fn shutdown(&self) {

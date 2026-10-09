@@ -34,6 +34,9 @@ say "Adding the preview task and key binding to Zed"
 
 say "Checking the setup"
 "$BIN" doctor || true
+for t in pandoc ffmpeg plantuml; do
+  command -v "$t" >/dev/null || warn "optional: $t is not installed (brew install $t) — see the README for what it adds"
+done
 
 cat <<MSG
 

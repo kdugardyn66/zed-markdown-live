@@ -34,6 +34,10 @@ pub struct Rendered {
     pub html: String,
     pub title: Option<String>,
     pub headings: Vec<Heading>,
+    /// Number of `<!-- slide -->` markers.
+    pub slides: usize,
+    /// reveal.js options from the front matter (`presentation:`).
+    pub deck: serde_json::Value,
 }
 
 /// Everything the renderer needs to know besides the text.
@@ -936,6 +940,46 @@ pub fn error_box(msg: &str, sp: &str) -> String {
     format!("<div class=\"ml-error\"{sp}>{}</div>", escape_html(msg))
 }
 
+/// `<!-- slide -->`, `<!-- slide vertical=true data-background-color="#123" -->` (MPE syntax).
+pub fn slide_marker(t: &str) -> Option<Vec<(String, String)>> {
+    let inner = t.strip_prefix("<!--")?.strip_suffix("-->")?.trim();
+    let rest = inner.strip_prefix("slide")?;
+    if !(rest.is_empty() || rest.starts_with(char::is_whitespace)) {
+        return None;
+    }
+    Some(parse_attrs(rest.trim()))
+}
+
+/// reveal.js options from `presentation:` in the front matter (MPE style), e.g.
+/// `theme: white.css`, `transition: fade`, `width: 1280`, `slideNumber: true`.
+pub fn presentation_settings(fm: &str) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    let mut inside = false;
+    for line in fm.lines() {
+        if line.trim() == "---" || line.trim().is_empty() {
+            continue;
+        }
+        let indented = line.starts_with(' ') || line.starts_with('\t');
+        if !indented {
+            inside = line.trim_end() == "presentation:";
+            continue;
+        }
+        if !inside {
+            continue;
+        }
+        if let Some((k, v)) = line.trim().split_once(':') {
+            let v = v.trim().trim_matches('"').trim_matches('\'');
+            let val = match v {
+                "true" => serde_json::Value::Bool(true),
+                "false" => serde_json::Value::Bool(false),
+                _ => v.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(serde_json::Value::Number).unwrap_or_else(|| serde_json::Value::String(v.trim_end_matches(".css").to_string())),
+            };
+            out.insert(k.trim().to_string(), val);
+        }
+    }
+    serde_json::Value::Object(out)
+}
+
 /// Front matter `key: value` pairs (top level only, enough for title / tables).
 pub fn front_matter_pairs(fm: &str) -> Vec<(String, String)> {
     fm.lines()
@@ -984,11 +1028,14 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
     let mut anchorizer = Anchorizer::new();
     let mut title = None;
     let mut toc_nodes = Vec::new();
+    let mut slides = 0usize;
+    let mut deck = serde_json::json!({});
     let nodes: Vec<_> = root.descendants().collect();
     for node in nodes {
         let value = node.data().value.clone();
         match value {
             NodeValue::FrontMatter(fm) => {
+                deck = presentation_settings(&fm);
                 let pairs = front_matter_pairs(&fm);
                 title = pairs.iter().find(|(k, _)| k == "title").map(|(_, v)| v.clone());
                 let html = match ctx.settings.front_matter.as_str() {
@@ -1063,6 +1110,13 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
             }
             NodeValue::HtmlBlock(hb) => {
                 let t = hb.literal.trim();
+                if let Some(attrs) = slide_marker(t) {
+                    slides += 1;
+                    let sp = sp_attr(ctx, node);
+                    let json = serde_json::Value::Object(attrs.into_iter().map(|(k, v)| (k, serde_json::Value::String(v))).collect());
+                    replace_with_html(node, format!("<div class=\"ml-slide-break\" data-slide=\"{}\"{sp}></div>\n", escape_html(&json.to_string())));
+                    continue;
+                }
                 if let Some(n) = t.strip_prefix(IMPORT_TOKEN).and_then(|r| r.strip_suffix("-->")).and_then(|n| n.parse::<usize>().ok()) {
                     if let Some(imp) = imports.get(n) {
                         let sp = sp_attr(ctx, node);
@@ -1093,7 +1147,7 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
     }
     let mut html = String::new();
     let _ = comrak::format_html(root, &opts, &mut html);
-    Rendered { html, title, headings }
+    Rendered { html, title, headings, slides, deck }
 }
 
 /// Replaces a block node (and its children) by a raw HTML block.
@@ -1110,6 +1164,20 @@ mod tests {
 
     fn ctx(s: &Settings) -> Ctx<'_> {
         Ctx::new(s, std::env::temp_dir().join("t.md"), vec![])
+    }
+
+    #[test]
+    fn slides() {
+        let s = Settings::default();
+        let md = "---\npresentation:\n  theme: league.css\n  width: 1280\n  slideNumber: true\n---\n# One\n\n<!-- slide -->\n## Two\n<!-- slide data-background-color=\"#123\" vertical=true -->\nThree\n";
+        let r = render(md, &ctx(&s));
+        assert_eq!(r.slides, 2);
+        assert_eq!(r.deck["theme"], "league");
+        assert_eq!(r.deck["width"], 1280.0);
+        assert_eq!(r.deck["slideNumber"], true);
+        assert!(r.html.contains("class=\"ml-slide-break\""), "{}", r.html);
+        assert!(r.html.contains("data-background-color"), "{}", r.html);
+        assert!(slide_marker("<!-- slideshow -->").is_none());
     }
 
     #[test]

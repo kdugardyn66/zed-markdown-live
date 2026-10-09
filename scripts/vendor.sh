@@ -25,6 +25,8 @@ LIBS=(
   "wavedrom|wavedrom@3.7.0|wavedrom.min.js skins/default.js"
   "smiles|smiles-drawer@2.1.7|dist/smiles-drawer.min.js"
   "plotly|plotly.js-dist-min@3.7.0|plotly.min.js"
+  # v4: slides
+  "reveal|reveal.js@5.2.1|dist/reveal.js dist/reveal.css dist/theme/*.css dist/theme/fonts/*/*.woff dist/theme/fonts/*/*.css"
 )
 
 # Libraries without a browser build on npm: bundled here with esbuild.

@@ -23,18 +23,18 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | Tag | What's in it |
 |---|---|
 | **0.1.0** | Core: Markdown (GFM + MPE syntax), Mermaid, LaTeX math with KaTeX, CSV files and blocks as tables |
-| 0.2.0 | All extra diagrams, Chart.js, Python code with graphics, MathJax, chemistry (mhchem) |
-| 0.3.0 | Images (bmp, jpeg, png, svg, heic…) and videos (mp4, mkv, webm, mov, avi) |
-| 0.4.0 | Slides (`<!-- slide -->`) and exports: docx, odt, pdf, html, pptx, odp |
+| **0.2.0** | All extra diagrams, Chart.js, Python code with graphics, MathJax, chemistry (mhchem) |
+| **0.3.0** | Images (bmp, jpeg, png, svg, heic…) and videos (mp4, mkv, webm, mov, avi) |
+| **0.4.0** | Slides (`<!-- slide -->`, live reveal.js view) and exports: pdf, docx, odt, html, pptx, odp, slide pdf/html |
 
-This is **0.3.0**.
+This is **0.4.0**.
 
 ## Install
 
 You need Rust via [rustup](https://rustup.rs) (Zed compiles dev extensions with it).
 
 ```bash
-./setup.sh            # builds + installs `markdown-zed`, adds the Option-M key binding to Zed
+./setup.sh            # builds + installs `markdown-zed`, adds the Option-M / Option-Shift-N / Option-Shift-E keys to Zed
 ```
 
 Then in Zed: **Cmd-Shift-P → "zed: install dev extension"** → choose this folder.
@@ -124,6 +124,67 @@ See `examples/v2-diagrams.md`.
   (`~/.cache/markdown-live/media/` on Linux), keyed by file size and date.
 - Click a picture to see it full size (Esc closes).
 
+## Slides (0.4.0)
+
+Split a document into slides with MPE's marker (**Option-Shift-N** in Zed inserts one,
+or Cmd-. → "MarkDown Live: Insert new slide"):
+
+```markdown
+---
+presentation:          # optional reveal.js options (MPE style)
+  theme: white.css     # white, black, league, beige, sky, night, serif, simple, solarized, moon, dracula, blood
+  transition: slide
+  width: 960
+  height: 700
+  slideNumber: true
+---
+# First slide
+
+<aside class="notes">Speaker notes (also exported to PowerPoint).</aside>
+
+<!-- slide -->
+## Second slide
+
+<!-- slide vertical=true -->
+Below the second slide.
+
+<!-- slide data-background-color="#fff8c5" class="center" -->
+## Any reveal.js data-* attribute
+```
+
+Press **P** (or the screen icon) to switch the preview to a live **reveal.js**
+slide view: it updates as you type, and moving the cursor in Zed moves to that slide.
+Everything renders inside slides: diagrams, math, charts, CSV tables, code, pictures.
+Without markers, exports split slides at `#` / `##` headings.
+
+## Export (0.4.0)
+
+Press **E** (or the download icon) in the preview, run a Zed task
+("task: spawn" → "MarkDown Live: Export …", **Option-Shift-E** = PDF), use Cmd-. →
+"MarkDown Live: Export …", or the CLI: `markdown-zed export notes.md -f docx`.
+
+| Format | | Made with | Notes |
+|---|---|---|---|
+| Document | **PDF** | Chrome/Chromium (headless) | exactly what the preview shows; slide markers become page breaks |
+| | **Word (.docx)** | pandoc | real Word equations (mhchem too), diagrams as pictures, tables, code |
+| | **OpenDocument (.odt)** | pandoc | equations as LibreOffice formulas |
+| | **HTML** | — | one self-contained file (pictures, fonts, diagrams inlined) |
+| Slides | **PowerPoint (.pptx)** | pandoc | one slide per `<!-- slide -->`, speaker notes, two columns for text + picture |
+| | **Impress (.odp)** | pandoc + LibreOffice | equations as pictures (Impress can't show PowerPoint equations) |
+| | **PDF** | Chrome/Chromium | one page per slide, reveal.js theme |
+| | **HTML** | — | a self-contained reveal.js presentation |
+
+- Files are saved next to the Markdown file (`notes.pdf`, `notes.docx`, `notes.slides.pdf`,
+  `notes.slides.html`…) or in `"exportDir"`.
+- **Videos are left out** of every export (a "▶ video: …" line marks where they were).
+- Exports always use the light theme.
+- The snapshot comes from the preview page, so what you see is what you get. Exporting from
+  Zed or the CLI with no preview open renders the page in a hidden headless browser.
+- Your own Word styles or slide master: `"referenceDocx"`, `"referenceOdt"`, `"referencePptx"`
+  (pandoc `--reference-doc`).
+- Needs: Chrome or Chromium for PDF; `pandoc` for docx/odt/pptx (`brew install pandoc`);
+  LibreOffice for odp (`brew install --cask libreoffice`). `markdown-zed doctor` checks them.
+
 ## The viewer
 
 | Key | Action |
@@ -134,6 +195,8 @@ See `examples/v2-diagrams.md`.
 | **+ / − / 0** | text size |
 | **R** | re-render: re-reads imported files, re-runs code chunks, re-renders PlantUML |
 | **M** | math engine: KaTeX ↔ MathJax |
+| **P** | slide view on/off (reveal.js keys work inside: arrows, Esc = overview, F = fullscreen) |
+| **E** | export menu |
 | Cmd/Ctrl-P | print (or "Save as PDF") |
 
 - Only changed blocks are re-rendered (morphdom): typing never makes a diagram flicker.
@@ -172,6 +235,10 @@ In `~/.config/zed/settings.json`:
         "enableScriptExecution": false,  // run ```python {cmd=true} chunks without asking
         "codeTimeout": 30,          // seconds per chunk
         "python": "",               // "" = workspace .venv, else python3
+        "exportDir": "",            // "" = next to the Markdown file; relative or absolute
+        "slideTheme": "auto",       // when the front matter has no presentation.theme
+        "pandoc": "", "chrome": "", // "" = autodetect
+        "referenceDocx": "", "referenceOdt": "", "referencePptx": ""
         "port": 0                   // 0 = random
       }
       // "binary": { "path": "/Users/you/.cargo/bin/markdown-zed" }
@@ -185,6 +252,8 @@ In `~/.config/zed/settings.json`:
 ```
 markdown-zed preview FILE [--line N] [--new-window]    what the Option-M task runs
 markdown-zed render FILE                               print the HTML (debugging)
+markdown-zed export FILE -f FORMAT                     html | pdf | docx | odt | pptx | odp | slides-pdf | slides-html
+markdown-zed insert-slide FILE --line N                what Option-Shift-N runs
 markdown-zed serve                                     standalone preview server (auto-started)
 markdown-zed doctor                                    what was detected
 markdown-zed setup-zed [--key alt-m]                   (re)write the Zed task + key binding
@@ -220,6 +289,10 @@ that watches the file on disk.
   `"plantumlJar"` / `"java"` at your copies. `markdown-zed doctor` shows what it found.
 - **A video stays on "Converting…"** or shows a note: install ffmpeg (`brew install ffmpeg`);
   `markdown-zed doctor` shows whether it was found.
+- **Export fails**: `markdown-zed doctor` lists pandoc / Chrome / LibreOffice. Exports from
+  Zed need the preview open or Chrome/Chromium installed (for the hidden page).
+- **Equations missing in Impress**: open the .pptx in PowerPoint/Keynote, or export .odp
+  (equations become pictures there).
 - **matplotlib not found**: code chunks use the workspace `.venv` when there is one;
   install packages there, or set `"python"`.
 
@@ -227,7 +300,9 @@ that watches the file on disk.
 
 ```bash
 cd server && cargo test            # unit tests
-cargo build && python3 ../tests/e2e.py   # end-to-end: real LSP session + headless Chromium
+cargo build && cd ..
+ML_EXTRA_TESTS=e2e_v2,e2e_v3,e2e_v4 python3 tests/e2e.py   # end-to-end: real LSP session + headless Chromium
+#   ML_TEST_SETTINGS='{"plantumlJar": "…", "chrome": "…"}' points the tests at local tools
 ./scripts/vendor.sh                # refresh the bundled browser libraries
 ```
 

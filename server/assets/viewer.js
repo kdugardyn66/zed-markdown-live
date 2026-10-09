@@ -115,7 +115,7 @@
       const src = el.querySelector('pre.ml-src')?.textContent ?? el.dataset.src ?? '';
       el.dataset.src = src;
       const mt = state.settings.mermaidTheme && state.settings.mermaidTheme !== 'auto' ? state.settings.mermaidTheme : (theme() === 'dark' ? 'dark' : 'default');
-      ML.lib('mermaid').initialize({ startOnLoad: false, theme: mt, securityLevel: 'strict', fontFamily: 'inherit' });
+      ML.lib('mermaid').initialize({ startOnLoad: false, theme: mt, securityLevel: 'strict', fontFamily: 'inherit', htmlLabels: true, flowchart: { htmlLabels: true }, class: { htmlLabels: true }, state: { htmlLabels: true } });
       const id = 'ml-mermaid-' + (++this.n);
       try {
         const { svg } = await ML.lib('mermaid').render(id, src);
@@ -249,6 +249,7 @@
   }
   let cursorEl = null;
   function scrollToLine(line0, instant) {
+    if (line0 != null && ML.deckActive && ML.deckCursor) { ML.deckCursor(line0); return; }
     if (line0 == null || !syncIndex.length) return;
     const L = line0 + 1;
     let best = null;
@@ -363,12 +364,12 @@
       $('timing').textContent = 'rendered in ' + s.renderMs + ' ms (server) · ' + Math.round(performance.now() - t0) + ' ms (page)';
       renderToc();
       buildSyncIndex();
-      ML.onUpdate && ML.onUpdate(s);
-      renderPlugins(false).then(() => {
+      ML.renderPromise = renderPlugins(false).then(() => {
         if (pendingAnchor) { const el = document.getElementById(pendingAnchor); pendingAnchor = null; el?.scrollIntoView(); }
         else if (state.sync && s.cursorLine != null && (fileChanged || s.cursorSeq !== state.cseq)) scrollToLine(s.cursorLine, fileChanged);
       });
       if (state.sync && s.cursorLine != null) scrollToLine(s.cursorLine, fileChanged);
+      ML.onUpdate && ML.onUpdate(s);
     } else if (state.sync && s.cursorSeq !== state.cseq && s.cursorLine != null) {
       scrollToLine(s.cursorLine);
     }
@@ -435,6 +436,7 @@
   $('btn-zoom').onclick = () => zoom(1);
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
+    if (ML.deckActive && e.key !== 'p' && e.key !== 'P') return; // reveal.js has the keyboard in slide view
     const k = e.key;
     if (k === 't' || k === 'T') $('btn-toc').click();
     else if (k === 's' || k === 'S') $('btn-sync').click();
@@ -445,6 +447,15 @@
     else if (k === '0') zoom(1);
     else if (ML.onKey) ML.onKey(e);
   });
+
+  /** Runs `fn` with the page temporarily in theme `t` (exports are always light). */
+  ML.withTheme = async (t, fn) => {
+    if (theme() === t) return fn();
+    const prev = state.themePref;
+    state.themePref = t; applyTheme(); await renderPlugins(false);
+    try { return await fn(); } finally { state.themePref = prev; applyTheme(); renderPlugins(false); }
+  };
+  ML.renderPlugins = renderPlugins;
 
   $('btn-sync').classList.toggle('on', state.sync);
   applyTheme();

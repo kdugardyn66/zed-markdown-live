@@ -117,10 +117,10 @@ class Lsp:
             self.p.kill()
 
 
-def api(inst, path, body=None):
+def api(inst, path, body=None, timeout=30):
     url = f"http://127.0.0.1:{inst['port']}{path}{'&' if '?' in path else '?'}t={inst['token']}"
     data = json.dumps(body).encode() if body is not None else None
-    with urllib.request.urlopen(urllib.request.Request(url, data=data, method="POST" if data else "GET"), timeout=30) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, data=data, method="POST" if data else "GET"), timeout=timeout) as r:
         return r.read()
 
 

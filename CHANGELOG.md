@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — slides and exports
+
+- Slides with MPE's `<!-- slide -->` (attributes, `vertical=true`, speaker notes) and
+  `presentation:` front matter; "Insert new slide" (Option-Shift-N, code action, CLI → workspace/applyEdit).
+- Live reveal.js slide view in the preview (P), follows the editor cursor.
+- Exports built from the rendered page: PDF (headless Chrome), Word/ODT (pandoc, real equations),
+  self-contained HTML, PowerPoint (pandoc, one slide per marker, notes, two-column picture slides),
+  Impress (via LibreOffice, equations as pictures), slide PDF (one page per slide) and reveal.js HTML.
+  Videos are left out.
+- Exports from Zed tasks / code actions / CLI; a hidden headless page renders when no preview is open.
+
 ## 0.3.0 — pictures and videos
 
 - Pictures: png, jpeg, gif, bmp, svg, webp, avif natively; HEIC/HEIF and TIFF converted

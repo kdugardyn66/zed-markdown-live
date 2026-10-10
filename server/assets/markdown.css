@@ -156,6 +156,8 @@
   .markdown-body .ml-cursor { box-shadow: none; }
   .markdown-body .ml-copy { display: none; }
   .markdown-body .ml-csv { max-height: none; overflow: visible; }
+  /* long code lines wrap on paper instead of being cut off */
+  .markdown-body pre, .markdown-body pre code { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
 }
 @media print and (orientation: landscape) {
   .markdown-body .ml-slide { min-height: calc(100vh - 2px); aspect-ratio: auto; font-size: 17pt; padding: 36px 56px; }

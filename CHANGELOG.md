@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — manuals
+
+- `docs/manual-markdown.md` (+ PDF): writing Markdown in Zed with MarkDown Live, every
+  feature with its code and its live result. `docs/manual-terminal.md` (+ PDF): the
+  `markdown-zed` command line. `scripts/manual-pdfs.py` remakes the PDFs with MarkDown Live itself.
+- Printing: long code lines wrap instead of being cut off.
+
 ## 0.7.0 — slides in frames, with notes
 
 - Documents with `<!-- slide -->` markers show every slide in a numbered 16:9 frame

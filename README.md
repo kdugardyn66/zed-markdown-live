@@ -30,8 +30,14 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | **0.6.0** | 3D molecules (Mol*), Graph / Diagram \| Code switch for `hide=true` chunks; on-screen slide view removed |
 | **0.6.1** | The preview always uses your Zed settings (also when served by the standalone server) |
 | **0.7.0** | Slides in frames with notes; printing: portrait = slide + notes, landscape = notes on the next page |
+| **0.7.1** | Manuals (`docs/`), long code lines wrap when printing |
 
-This is **0.7.0**.
+This is **0.7.1**.
+
+**Manuals:** [Writing Markdown in Zed](docs/manual-markdown.md) ([PDF](docs/manual-markdown.pdf)) —
+every feature with the Markdown and its result — and [Using `markdown-zed` in the
+Terminal](docs/manual-terminal.md) ([PDF](docs/manual-terminal.pdf)). Open the `.md`
+versions in Zed with Option-M to see the examples live.
 
 ## Install
 

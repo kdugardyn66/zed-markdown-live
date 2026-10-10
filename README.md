@@ -27,8 +27,9 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | **0.3.0** | Images (bmp, jpeg, png, svg, heic…) and videos (mp4, mkv, webm, mov, avi) |
 | **0.4.0** | Slides (`<!-- slide -->`, live reveal.js view) and exports: pdf, docx, odt, html, pptx, odp, slide pdf/html |
 | **0.5.0** | Exports replaced by printing (document or one slide per page); shorter Python error messages |
+| **0.6.0** | 3D molecules (Mol*), Graph / Diagram \| Code switch for `hide=true` chunks; on-screen slide view removed |
 
-This is **0.5.0**.
+This is **0.6.0**.
 
 ## Install
 
@@ -90,7 +91,9 @@ trailing commas). Nothing in them is evaluated as code.
 document's folder, in the background (a slow chunk never blocks typing; it runs
 once the text has been still for 0.7 s).
 
-- `print()` output appears under the code; `{output="markdown"}`, `"html"` or `"none"`; `{hide=true}` hides the code.
+- `print()` output appears under the code; `{output="markdown"}`, `"html"` or `"none"`.
+- `{hide=true}` shows only the result, in a frame with two buttons: **Graph / Diagram**
+  (or **Output** for text) and **Code**. The choice is kept while you type; printing shows the result.
 - **matplotlib / seaborn** figures (`plt.show()` or left open) appear as SVG; **Plotly** `fig.show()` appears as an interactive chart.
 - Python is `.venv/bin/python` from the workspace when present, else `python3` (setting `"python"`).
   `bash`, `node`, `ruby`, `perl`, `Rscript`, `julia`, `php`, `lua` also run; `{cmd="/path/to/tool"}` picks the interpreter, `{args=["-x"]}` adds arguments.
@@ -125,38 +128,37 @@ See `examples/v2-diagrams.md`.
   (`~/.cache/markdown-live/media/` on Linux), keyed by file size and date.
 - Click a picture to see it full size (Esc closes).
 
-## Slides (0.4.0)
+## 3D molecules (0.6.0)
 
-Split a document into slides with MPE's marker (**Option-Shift-N** in Zed inserts one,
-or Cmd-. → "MarkDown Live: Insert new slide"):
+[Mol*](https://molstar.org), the PDB's viewer, bundled (works offline):
 
-```markdown
----
-presentation:          # optional reveal.js options (MPE style)
-  theme: white.css     # white, black, league, beige, sky, night, serif, simple, solarized, moon, dracula, blood
-  transition: slide
-  width: 960
-  height: 700
-  slideNumber: true
----
-# First slide
+````markdown
+@import "protein.pdb" {height=400 title="My protein" spin=true}
 
-<aside class="notes">Speaker notes (shown in the document view, never printed).</aside>
-
-<!-- slide -->
-## Second slide
-
-<!-- slide vertical=true -->
-Below the second slide.
-
-<!-- slide data-background-color="#fff8c5" class="center" -->
-## Any reveal.js data-* attribute
+```sdf
+…paste an SDF / MOL block…
 ```
 
-Press **P** (or the screen icon) to switch the preview to a live **reveal.js**
-slide view: it updates as you type, and moving the cursor in Zed moves to that slide.
-Everything renders inside slides: diagrams, math, charts, CSV tables, code, pictures.
-Without markers, slides split at `#` / `##` headings.
+```molstar {pdb=1CRN}
+```
+````
+
+- Files: `.pdb`, `.cif`/`.mmcif`, `.bcif`, `.sdf`, `.mol`, `.mol2`, `.xyz`, `.gro`, `.pdbqt`
+  (`@import`, loaded from disk, so large files are fine).
+- Blocks: the format as language (```` ```pdb ````, ```` ```xyz ```` …) or ```` ```molstar ````
+  (format detected; `{format=mol2}` to choose). `{code=true}` shows the text as code instead.
+- `{pdb=ID}` downloads an entry from the RCSB PDB: the **only** molecule block that goes online.
+- Drag to rotate, scroll to zoom. Printed as a picture of the current view.
+- 2D structures from SMILES: ```` ```smiles ```` (0.2.0).
+
+See `examples/v6-molecules.md`.
+
+## Page breaks with `<!-- slide -->`
+
+MPE's slide marker (**Option-Shift-N** in Zed inserts one, or Cmd-. → "MarkDown Live:
+Insert new slide") shows as a dashed line in the preview and starts a new page when you
+print. Speaker notes (`<aside class="notes">…</aside>`) show in the preview and are never
+printed. (0.4.0–0.5.0 also had a reveal.js slide view; it was removed in 0.6.0.)
 
 ## Print
 
@@ -164,12 +166,10 @@ Press **Cmd-P** (Ctrl-P) or the printer icon in the preview, press **Option-Shif
 Zed, use Cmd-. → "MarkDown Live: Print", or the CLI: `markdown-zed print notes.md`.
 The browser's print dialog opens; choose a printer, or **Save as PDF** for a PDF file.
 
-- **Document view**: the document as the preview shows it, always in the light theme,
-  without the toolbar. `<!-- slide -->` markers become page breaks.
-- **Slide view** (P): one slide per page, in the reveal.js theme; slides that are too
-  tall are shrunk to fit. Speaker notes are left out.
+- The document as the preview shows it, always in the light theme, without the toolbar.
+  `<!-- slide -->` markers become page breaks; speaker notes are left out.
 - **Videos are left out** (a "▶ video: …" line marks where they were). Chart.js and
-  Plotly charts are printed as pictures.
+  Plotly charts and 3D molecules are printed as pictures; `hide=true` chunks print their result.
 - From Zed or the CLI, the preview opens first when it isn't open yet.
 
 ## The viewer
@@ -182,8 +182,7 @@ The browser's print dialog opens; choose a printer, or **Save as PDF** for a PDF
 | **+ / − / 0** | text size |
 | **R** | re-render: re-reads imported files, re-runs code chunks, re-renders PlantUML |
 | **M** | math engine: KaTeX ↔ MathJax |
-| **P** | slide view on/off (reveal.js keys work inside: arrows, Esc = overview, F = fullscreen) |
-| Cmd/Ctrl-P | print (or "Save as PDF"); in slide view one slide per page |
+| Cmd/Ctrl-P | print (or "Save as PDF") |
 
 - Only changed blocks are re-rendered (morphdom): typing never makes a diagram flicker.
 - One preview window follows the file you're editing. Opening the preview again
@@ -221,7 +220,6 @@ In `~/.config/zed/settings.json`:
         "enableScriptExecution": false,  // run ```python {cmd=true} chunks without asking
         "codeTimeout": 30,          // seconds per chunk
         "python": "",               // "" = workspace .venv, else python3
-        "slideTheme": "auto",       // when the front matter has no presentation.theme
         "port": 0                   // 0 = random
       }
       // "binary": { "path": "/Users/you/.cargo/bin/markdown-zed" }
@@ -259,7 +257,8 @@ that watches the file on disk.
 - **Code chunks never run unless you allow them** (setting, banner, or the code
   action "MarkDown Live: Run code chunks (this session)").
 - Nothing is sent online unless you ask: PlantUML is local by default, and Kroki is
-  only used for `kroki-…` blocks. YouTube/Vimeo players load only when you link a video.
+  only used for `kroki-…` blocks, the RCSB PDB only for `{pdb=ID}` molecule blocks.
+  YouTube/Vimeo players load only when you link a video.
 
 ## Troubleshooting
 
@@ -272,6 +271,8 @@ that watches the file on disk.
   `"plantumlJar"` / `"java"` at your copies. `markdown-zed doctor` shows what it found.
 - **A video stays on "Converting…"** or shows a note: install ffmpeg (`brew install ffmpeg`);
   `markdown-zed doctor` shows whether it was found.
+- **3D molecules show "WebGL turned off"**: enable hardware acceleration in the browser
+  settings (Chrome: Settings → System → "Use graphics acceleration").
 - **Option-Shift-P does nothing visible**: the print dialog opens in the preview window;
   bring that window to the front.
 - **matplotlib not found**: code chunks use the workspace `.venv` when there is one;

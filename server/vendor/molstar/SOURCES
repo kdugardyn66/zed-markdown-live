@@ -1,0 +1,3 @@
+viewer/molstar.js build/viewer/molstar.js
+viewer/molstar.css build/viewer/molstar.css
+viewer/theme/light.css build/viewer/theme/light.css

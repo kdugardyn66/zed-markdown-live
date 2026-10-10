@@ -29,9 +29,8 @@ pub struct View {
     pub blocked_chunks: usize,
     /// Server-side blocks still rendering.
     pub pending: usize,
-    /// `<!-- slide -->` markers and reveal.js options.
+    /// `<!-- slide -->` markers (page breaks when printing).
     pub slides: usize,
-    pub deck: Value,
 }
 
 #[derive(Default)]
@@ -272,7 +271,6 @@ impl App {
             "renderMs": v.render_ms as u64,
             "blockedChunks": v.blocked_chunks,
             "slides": v.slides,
-            "deck": v.deck,
             "printRequest": st.print_request.as_ref().filter(|(_, f)| st.view.file.as_ref() == Some(f)).map(|(id, _)| json!({"id": id})),
             "pending": v.pending,
             "focus": v.focus,
@@ -339,7 +337,7 @@ impl App {
             self.jobs.begin(&target);
             let r = markdown::render(&text, &ctx);
             let (blocked, pending) = (ctx.blocked_chunks.get(), ctx.pending.get());
-            let (slides, deck) = (r.slides, r.deck.clone());
+            let slides = r.slides;
             let ms = t0.elapsed().as_millis();
             let mut st = self.state.lock().unwrap();
             if st.target.as_ref() != Some(&target) {
@@ -353,7 +351,6 @@ impl App {
             st.view.blocked_chunks = blocked;
             st.view.pending = pending;
             st.view.slides = slides;
-            st.view.deck = deck;
             self.bump(&mut st);
         }
     }

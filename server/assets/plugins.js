@@ -316,5 +316,21 @@
     const libs = document.getElementById('ml-libs');
     if (s.pending > 0) { libs.dataset.pending = '1'; libs.textContent = '⏳ rendering ' + s.pending + ' block' + (s.pending > 1 ? 's' : '') + '…'; }
     else if (libs.dataset.pending) { delete libs.dataset.pending; libs.textContent = ''; }
+    applyTabs();
   };
+
+  // ------------------------------------------------------------------ hide=true chunks: Graph / Diagram | Code
+  // Which chunks show their code (by code hash), so the choice survives live updates.
+  const showCode = new Set();
+  function applyTabs() {
+    for (const c of document.querySelectorAll('#ml-content .ml-tabbed')) c.classList.toggle('ml-show-code', showCode.has(c.dataset.ck));
+  }
+  document.getElementById('ml-content').addEventListener('click', (e) => {
+    const b = e.target.closest('.ml-chunk-tabs button[data-tab]');
+    if (!b) return;
+    const c = b.closest('.ml-tabbed');
+    if (b.dataset.tab === 'code') showCode.add(c.dataset.ck); else showCode.delete(c.dataset.ck);
+    applyTabs();
+  });
+  ML.applyTabs = applyTabs;
 })(window.ML);

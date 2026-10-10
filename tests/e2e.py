@@ -221,7 +221,7 @@ def main():
     if not inst:
         sys.exit("server did not register")
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])  # WebGL for Mol*
         page = browser.new_page(viewport={"width": 1100, "height": 800})
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))

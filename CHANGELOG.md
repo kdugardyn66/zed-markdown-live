@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — 3D molecules, code switch, no slide view
+
+- 3D molecules with Mol* 5.11 (bundled): `@import` of .pdb/.cif/.bcif/.sdf/.mol/.mol2/.xyz/.gro/.pdbqt,
+  fenced blocks with the format as language or ```` ```molstar ```` (format detected),
+  `{pdb=ID}` from the RCSB PDB (online, per block). Options `height`, `title`, `spin`, `format`;
+  `{code=true}` keeps a block as code. Printed as a picture; theme switches and typing keep the viewer.
+- Code chunks with `hide=true`: the result in a frame with **Graph / Diagram** (or **Output**) and
+  **Code** buttons; the choice survives live updates; printing shows the result.
+- Removed the on-screen slide view (P, slides button, reveal.js) and the `slideTheme` setting /
+  `presentation:` front matter. `<!-- slide -->` markers stay: page breaks when printing.
+- Examples: `v6-molecules.md`; the plots in `v2-diagrams.md` use `hide=true`.
+
 ## 0.5.0 — printing instead of exports
 
 - Removed the exports (docx, odt, html, pptx, odp, slide html/pdf, PDF via headless Chrome),

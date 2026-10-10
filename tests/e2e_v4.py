@@ -1,4 +1,4 @@
-"""v4/v5 checks: slides view, insert slide, printing."""
+"""v4-v6 checks: slide markers, insert slide, printing."""
 
 
 def run(page, env, lsp, inst, check, wait_for, api, uri):
@@ -9,21 +9,9 @@ def run(page, env, lsp, inst, check, wait_for, api, uri):
     ok = wait_for(lambda: page.locator("h1", has_text="Slides and printing").count() == 1, 10)
     check("v4 document shown", ok)
     check("slide breaks in the document view", page.locator(".ml-slide-break").count() == 5)
-    check("slides button shown", wait_for(lambda: page.locator("#ml-btn-slides").is_visible(), 5))
-
-    # live slides view
+    check("no slide view (removed in 0.6.0)", page.locator("#ml-btn-slides").count() == 0 and page.locator("#ml-deck").count() == 0)
     page.keyboard.press("p")
-    ok = wait_for(lambda: page.locator("#ml-deck .slides > section").count() == 5, 15)
-    check("slides view: 5 horizontal slides (one vertical stack)", ok, page.locator("#ml-deck .slides > section").count())
-    check("vertical slide nested", page.locator("#ml-deck .slides > section > section").count() == 2)
-    check("slide background attribute kept", page.locator("#ml-deck section[data-background-color='#fff8c5']").count() == 1)
-    check("mermaid diagram inside a slide", wait_for(lambda: page.locator("#ml-deck section svg").count() >= 1, 10))
-    code_line = next(i for i, l in enumerate(text.split("\n")) if "def hello" in l)
-    lsp.send("textDocument/documentHighlight", {"textDocument": {"uri": uri(doc)}, "position": {"line": code_line, "character": 0}}, req=True)
-    ok = wait_for(lambda: page.locator("#ml-deck .slides > section.present h2", has_text="Code").count() == 1, 5)
-    check("cursor in the editor moves the slides", ok)
-    page.keyboard.press("p")
-    check("back to the document view", wait_for(lambda: page.locator("#ml-scroller").is_visible(), 5))
+    check("P does nothing", wait_for(lambda: False, 1) is None and page.locator("#ml-deck").count() == 0)
 
     # printing: a hidden frame with a static copy, then the print dialog
     page.locator("#ml-btn-print").click()
@@ -36,14 +24,8 @@ def run(page, env, lsp, inst, check, wait_for, api, uri):
     check("print: video left out", fr.locator("video").count() == 0 and "a clip" in body)
     check("print: light theme", fr.locator("html[data-theme='light']").count() == 1)
     check("print: no toolbar in the copy", fr.locator("#ml-bar").count() == 0)
-    page.keyboard.press("p")
-    wait_for(lambda: page.locator("#ml-deck .slides > section").count() == 5, 15)
-    page.keyboard.press("Control+p")
-    ok = wait_for(lambda: page.locator("#ml-print-frame[data-ready='slides']").count() == 1, 60)
-    check("print in slide view (Ctrl-P) → one page per slide (6)", ok and fr.locator("section.ml-page").count() == 6, fr.locator("section.ml-page").count() if ok else 0)
-    check("print slides: speaker notes left out", ok and fr.locator("aside.notes").count() == 0)
-    page.keyboard.press("p")
-    wait_for(lambda: page.locator("#ml-scroller").is_visible(), 5)
+    check("print: slide markers are page breaks", fr.locator(".ml-slide-break").count() == 5)
+    check("print: speaker notes left out", fr.locator("aside.notes").first.is_hidden())
 
     # print from Zed (code action): the open preview prints
     page.evaluate("document.getElementById('ml-print-frame')?.remove()")

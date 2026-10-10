@@ -17,7 +17,7 @@ see `scripts/vendor.sh` for the exact versions):
 | [flowchart.js](https://github.com/adrai/flowchart.js) + [Raphaël](https://github.com/DmitryBaranovskiy/raphael) | flowcharts | MIT |
 | [SmilesDrawer](https://github.com/reymond-group/smilesDrawer) | chemical structures | MIT |
 | [Plotly.js](https://github.com/plotly/plotly.js) | interactive charts | MIT |
-| [reveal.js](https://github.com/hakimel/reveal.js) | slides | MIT (theme fonts: SIL OFL) |
+| [Mol*](https://github.com/molstar/molstar) | 3D molecules | MIT |
 
 External tools are used when installed: Java + PlantUML, ffmpeg, Chrome/Chromium
 (preview window). They are not bundled.

@@ -249,7 +249,6 @@
   }
   let cursorEl = null;
   function scrollToLine(line0, instant) {
-    if (line0 != null && ML.deckActive && ML.deckCursor) { ML.deckCursor(line0); return; }
     if (line0 == null || !syncIndex.length) return;
     const L = line0 + 1;
     let best = null;
@@ -436,7 +435,6 @@
   $('btn-zoom').onclick = () => zoom(1);
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
-    if (ML.deckActive && e.key !== 'p' && e.key !== 'P') return; // reveal.js has the keyboard in slide view
     const k = e.key;
     if (k === 't' || k === 'T') $('btn-toc').click();
     else if (k === 's' || k === 'S') $('btn-sync').click();
@@ -461,7 +459,7 @@
   applyTheme();
   applyZoom();
   renderToc();
-  // Later versions add their own scripts (slides, printing…) before polling starts.
+  // Later versions add their own scripts (printing, molecules…) before polling starts.
   (window.ML_EXTRA || []).forEach((f) => { try { f(ML); } catch (e) { console.error(e); } });
   // Start after every script of the page ran (plugins.js registers more renderers).
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', poll); else poll();

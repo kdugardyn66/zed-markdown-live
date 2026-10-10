@@ -73,8 +73,6 @@ pub struct Settings {
     pub code_timeout: u64,
     /// Python interpreter. Empty = `.venv/bin/python` in the workspace, else `python3`.
     pub python: String,
-    /// reveal.js theme when the front matter doesn't set one: `auto` (white/black by preview theme), `white`, `league`, …
-    pub slide_theme: String,
 }
 
 impl Default for Settings {
@@ -103,7 +101,6 @@ impl Default for Settings {
             enable_script_execution: false,
             code_timeout: 30,
             python: String::new(),
-            slide_theme: "auto".into(),
         }
     }
 }
@@ -169,7 +166,6 @@ impl Settings {
             "mermaidTheme": self.mermaid_theme,
             "scrollSync": self.scroll_sync,
             "math": self.math,
-            "slideTheme": self.slide_theme,
         })
     }
 }
@@ -200,7 +196,6 @@ struct SettingsShadow {
     enable_script_execution: bool,
     code_timeout: u64,
     python: String,
-    slide_theme: String,
 }
 
 impl From<&Settings> for SettingsShadow {
@@ -228,7 +223,6 @@ impl From<&Settings> for SettingsShadow {
             enable_script_execution: s.enable_script_execution,
             code_timeout: s.code_timeout,
             python: s.python.clone(),
-            slide_theme: s.slide_theme.clone(),
         }
     }
 }

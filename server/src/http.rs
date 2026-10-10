@@ -146,7 +146,7 @@ fn csp(app: &App, nonce: &str) -> String {
     format!(
         "default-src 'self'; script-src 'self' 'nonce-{nonce}' 'unsafe-eval' 'wasm-unsafe-eval'{cdn}; style-src 'self' 'unsafe-inline'{cdn}; \
          font-src 'self' data:{cdn}; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; \
-         connect-src 'self' data: blob:; worker-src 'self' blob:; \
+         connect-src 'self' data: blob: https://models.rcsb.org https://files.rcsb.org; worker-src 'self' blob:; \
          frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )
 }

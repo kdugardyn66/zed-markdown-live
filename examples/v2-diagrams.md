@@ -98,7 +98,10 @@ CC(=O)Oc1ccccc1C(=O)O aspirin
 
 ## Python
 
-```python {cmd=true}
+With `hide=true` the result is shown in a frame with two buttons: **Graph / Diagram**
+(the result) and **Code** (the code that made it).
+
+```python {cmd=true hide=true}
 import matplotlib.pyplot as plt
 print("sum =", sum(range(10)))
 plt.plot([1, 4, 9, 16])
@@ -106,11 +109,11 @@ plt.title("squares")
 plt.show()
 ```
 
-```python {cmd=true hide=true output="markdown"}
+```python {cmd=true hide=true output=markdown}
 print("| a | b |\n|---|---|\n| 1 | 2 |")
 ```
 
-```python {cmd=true}
+```python {cmd=true hide=true}
 import plotly.express as px
 fig = px.bar(x=["a", "b", "c"], y=[1, 3, 2])
 fig.show()

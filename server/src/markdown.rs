@@ -36,8 +36,6 @@ pub struct Rendered {
     pub headings: Vec<Heading>,
     /// Number of `<!-- slide -->` markers.
     pub slides: usize,
-    /// reveal.js options from the front matter (`presentation:`).
-    pub deck: serde_json::Value,
 }
 
 /// Everything the renderer needs to know besides the text.
@@ -566,6 +564,9 @@ pub fn render_fence(ctx: &Ctx, lang: &str, attrs: &[(String, String)], code: &st
         "chart" | "chartjs" | "chart.js" => Some(diagram_div(ctx, "chart", code, sp, &cls, attrs)),
         "plotly" => Some(diagram_div(ctx, "plotly", code, sp, &cls, attrs)),
         "smiles" => Some(diagram_div(ctx, "smiles", code, sp, &cls, attrs)),
+        // 3D molecules (Mol*): ```pdb, ```sdf …, or ```molstar with the format detected
+        "molstar" | "mol3d" | "molecule" => Some(molstar_div(code, None, attr(attrs, "format").map(str::to_string).unwrap_or_else(|| detect_structure_format(code).into()), sp, &cls, attrs)),
+        l if molstar_format(l).is_some() && !attr_true(attrs, "code") => Some(molstar_div(code, None, molstar_format(l).unwrap().0.into(), sp, &cls, attrs)),
         // rendered on the server (PlantUML: local Java, or the configured server)
         "plantuml" | "puml" | "uml" | "ditaa" | "salt" | "mindmap" | "gantt" | "wbs" => {
             let src = plantuml_source(lang, code);
@@ -607,6 +608,65 @@ fn diagram_div(ctx: &Ctx, kind: &str, code: &str, sp: &str, cls: &str, attrs: &[
     )
 }
 
+/// Mol* format for a fence language or file extension: (format, binary).
+pub fn molstar_format(ext: &str) -> Option<(&'static str, bool)> {
+    Some(match ext {
+        "pdb" | "ent" => ("pdb", false),
+        "cif" | "mmcif" => ("mmcif", false),
+        "bcif" => ("mmcif", true),
+        "sdf" | "sd" => ("sdf", false),
+        "mol" => ("mol", false),
+        "mol2" => ("mol2", false),
+        "xyz" => ("xyz", false),
+        "gro" => ("gro", false),
+        "pdbqt" => ("pdbqt", false),
+        _ => return None,
+    })
+}
+
+/// Guesses the format of a structure pasted into a ```molstar block.
+pub fn detect_structure_format(text: &str) -> &'static str {
+    let t = text.trim_start();
+    if t.starts_with("data_") {
+        "mmcif"
+    } else if text.contains("@<TRIPOS>") {
+        "mol2"
+    } else if text.contains("$$$$") {
+        "sdf"
+    } else if text.contains("M  END") {
+        "mol"
+    } else if t.lines().next().map(|l| l.trim().parse::<u64>().is_ok()).unwrap_or(false) {
+        "xyz"
+    } else {
+        "pdb"
+    }
+}
+
+/// A Mol* 3D viewer: the structure inline (`data`) or from a URL (`@import`, `pdb=ID` online).
+fn molstar_div(data: &str, url: Option<&str>, format: String, sp: &str, cls: &str, attrs: &[(String, String)]) -> String {
+    let binary = attr(attrs, "binary").map(|v| v == "true").unwrap_or(false);
+    let mut opts = serde_json::Map::new();
+    opts.insert("format".into(), format.clone().into());
+    if binary {
+        opts.insert("binary".into(), true.into());
+    }
+    if let Some(u) = url {
+        opts.insert("url".into(), u.into());
+    }
+    for k in ["pdb", "height", "spin", "title"] {
+        if let Some(v) = attr(attrs, k) {
+            opts.insert(k.into(), v.into());
+        }
+    }
+    let opts_json = serde_json::Value::Object(opts).to_string();
+    format!(
+        "<div class=\"ml-diagram ml-molstar {cls}\" data-kind=\"molstar\" data-h=\"{}\" data-opts=\"{}\"{sp}><pre class=\"ml-src\">{}</pre></div>",
+        hash(&format!("molstar\n{opts_json}\n{data}")),
+        escape_html(&opts_json),
+        escape_html(data)
+    )
+}
+
 fn svg_img(svg: &str, alt: &str) -> String {
     format!("<img class=\"ml-svg\" alt=\"{}\" src=\"data:image/svg+xml;base64,{}\">", escape_html(alt), util::base64(svg.as_bytes()))
 }
@@ -639,10 +699,23 @@ fn server_block(ctx: &Ctx, kind: &str, key_src: &str, sp: &str, cls: &str, job: 
 fn code_chunk(ctx: &Ctx, lang: &str, cmd: &str, attrs: &[(String, String)], code: &str, sp: &str) -> Option<String> {
     let dir = ctx.base_dir();
     let (argv, ext) = crate::diagrams::interpreter(ctx.settings, lang, cmd, &ctx.roots, &dir)?;
-    let hide = attr_true(attrs, "hide");
-    let shown_attrs: Vec<(String, String)> = attrs.iter().filter(|(k, _)| k != "cmd").cloned().collect();
-    let code_html = if hide { String::new() } else { code_block_html(lang, &shown_attrs, code, "") };
-    let chunk = |inner: String, extra: &str| format!("<div class=\"ml-chunk{extra}\"{sp}>{code_html}{inner}</div>");
+    // hide=true: the output is shown, with a "Graph / Diagram | Code" switch to see the code
+    let tabbed = attr_true(attrs, "hide");
+    let shown_attrs: Vec<(String, String)> = attrs.iter().filter(|(k, _)| k != "cmd" && k != "hide").cloned().collect();
+    let code_html = code_block_html(lang, &shown_attrs, code, "");
+    let ck = hash(&format!("{lang}\n{code}"));
+    let chunk = |inner: String, extra: &str| {
+        if tabbed {
+            let graphic = ["<img", "<svg", "ml-diagram", "ml-plotly", "<video"].iter().any(|t| inner.contains(t));
+            let label = if graphic { "Graph / Diagram" } else { "Output" };
+            format!(
+                "<div class=\"ml-chunk ml-tabbed{extra}\" data-ck=\"{ck}\"{sp}><div class=\"ml-chunk-tabs\" role=\"tablist\">\
+                 <button type=\"button\" role=\"tab\" data-tab=\"out\">{label}</button><button type=\"button\" role=\"tab\" data-tab=\"code\">Code</button></div>{code_html}{inner}</div>"
+            )
+        } else {
+            format!("<div class=\"ml-chunk{extra}\"{sp}>{code_html}{inner}</div>")
+        }
+    };
     if !ctx.allow_scripts {
         ctx.blocked_chunks.set(ctx.blocked_chunks.get() + 1);
         return Some(chunk(format!("<div class=\"ml-chunk-note\">▶ {} chunk not run — code execution is off</div>", escape_html(lang)), ""));
@@ -865,6 +938,18 @@ fn render_import(ctx: &Ctx, imp: &Import, sp: &str) -> String {
     if is_media(&ext) {
         return format!("<div class=\"ml-media\"{sp}>{}</div>", media_html(ctx, p, attr(&imp.attrs, "alt").unwrap_or(""), attr(&imp.attrs, "title").unwrap_or(""), &imp.attrs));
     }
+    if let Some((format, binary)) = molstar_format(&ext).filter(|_| attr(&imp.attrs, "as").is_none()) {
+        // 3D structure files: Mol* loads them from the preview server (they can be large)
+        let Ok(meta) = std::fs::metadata(&path) else {
+            return error_box(&format!("@import \"{}\": file not found", imp.path), sp);
+        };
+        let stamp = format!("{}:{:?}", meta.len(), meta.modified().ok());
+        let mut attrs = imp.attrs.clone();
+        if binary {
+            attrs.push(("binary".into(), "true".into()));
+        }
+        return molstar_div(&stamp, Some(&fs_url(&path)), format.into(), sp, "", &attrs).replace("<pre class=\"ml-src\">", "<pre class=\"ml-src\" hidden>");
+    }
     let text = match std::fs::read(&path) {
         Ok(b) => String::from_utf8_lossy(&b).to_string(),
         Err(e) => return error_box(&format!("@import \"{}\": {e}", imp.path), sp),
@@ -950,36 +1035,6 @@ pub fn slide_marker(t: &str) -> Option<Vec<(String, String)>> {
     Some(parse_attrs(rest.trim()))
 }
 
-/// reveal.js options from `presentation:` in the front matter (MPE style), e.g.
-/// `theme: white.css`, `transition: fade`, `width: 1280`, `slideNumber: true`.
-pub fn presentation_settings(fm: &str) -> serde_json::Value {
-    let mut out = serde_json::Map::new();
-    let mut inside = false;
-    for line in fm.lines() {
-        if line.trim() == "---" || line.trim().is_empty() {
-            continue;
-        }
-        let indented = line.starts_with(' ') || line.starts_with('\t');
-        if !indented {
-            inside = line.trim_end() == "presentation:";
-            continue;
-        }
-        if !inside {
-            continue;
-        }
-        if let Some((k, v)) = line.trim().split_once(':') {
-            let v = v.trim().trim_matches('"').trim_matches('\'');
-            let val = match v {
-                "true" => serde_json::Value::Bool(true),
-                "false" => serde_json::Value::Bool(false),
-                _ => v.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(serde_json::Value::Number).unwrap_or_else(|| serde_json::Value::String(v.trim_end_matches(".css").to_string())),
-            };
-            out.insert(k.trim().to_string(), val);
-        }
-    }
-    serde_json::Value::Object(out)
-}
-
 /// Front matter `key: value` pairs (top level only, enough for title / tables).
 pub fn front_matter_pairs(fm: &str) -> Vec<(String, String)> {
     fm.lines()
@@ -1029,13 +1084,11 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
     let mut title = None;
     let mut toc_nodes = Vec::new();
     let mut slides = 0usize;
-    let mut deck = serde_json::json!({});
     let nodes: Vec<_> = root.descendants().collect();
     for node in nodes {
         let value = node.data().value.clone();
         match value {
             NodeValue::FrontMatter(fm) => {
-                deck = presentation_settings(&fm);
                 let pairs = front_matter_pairs(&fm);
                 title = pairs.iter().find(|(k, _)| k == "title").map(|(_, v)| v.clone());
                 let html = match ctx.settings.front_matter.as_str() {
@@ -1147,7 +1200,7 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
     }
     let mut html = String::new();
     let _ = comrak::format_html(root, &opts, &mut html);
-    Rendered { html, title, headings, slides, deck }
+    Rendered { html, title, headings, slides }
 }
 
 /// Replaces a block node (and its children) by a raw HTML block.
@@ -1167,14 +1220,33 @@ mod tests {
     }
 
     #[test]
+    fn molecules() {
+        let s = Settings::default();
+        assert_eq!(detect_structure_format("data_1CRN\n#"), "mmcif");
+        assert_eq!(detect_structure_format("x\n@<TRIPOS>MOLECULE"), "mol2");
+        assert_eq!(detect_structure_format("3\nwater\nO 0 0 0"), "xyz");
+        assert_eq!(detect_structure_format("ATOM      1  N"), "pdb");
+        let r = render("```sdf\nx\n```\n\n```pdb {code=true}\nATOM\n```\n\n```molstar {pdb=1CRN height=300}\n```\n", &ctx(&s));
+        assert!(r.html.contains("data-kind=\"molstar\""), "{}", r.html);
+        assert!(r.html.contains("&quot;format&quot;:&quot;sdf&quot;"), "{}", r.html);
+        assert!(r.html.contains("&quot;pdb&quot;:&quot;1CRN&quot;"), "{}", r.html);
+        assert!(r.html.contains("language-pdb"), "{}", r.html);
+    }
+
+    #[test]
+    fn hidden_code_gets_tabs() {
+        let s = Settings::default();
+        let r = render("```python {cmd=true hide=true}\nprint(1)\n```\n", &ctx(&s));
+        assert!(r.html.contains("ml-tabbed") && r.html.contains("data-tab=\"code\""), "{}", r.html);
+        assert!(r.html.contains("language-python"), "{}", r.html);
+    }
+
+    #[test]
     fn slides() {
         let s = Settings::default();
-        let md = "---\npresentation:\n  theme: league.css\n  width: 1280\n  slideNumber: true\n---\n# One\n\n<!-- slide -->\n## Two\n<!-- slide data-background-color=\"#123\" vertical=true -->\nThree\n";
+        let md = "# One\n\n<!-- slide -->\n## Two\n<!-- slide data-background-color=\"#123\" vertical=true -->\nThree\n";
         let r = render(md, &ctx(&s));
         assert_eq!(r.slides, 2);
-        assert_eq!(r.deck["theme"], "league");
-        assert_eq!(r.deck["width"], 1280.0);
-        assert_eq!(r.deck["slideNumber"], true);
         assert!(r.html.contains("class=\"ml-slide-break\""), "{}", r.html);
         assert!(r.html.contains("data-background-color"), "{}", r.html);
         assert!(slide_marker("<!-- slideshow -->").is_none());

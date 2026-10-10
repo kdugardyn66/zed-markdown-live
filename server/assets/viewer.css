@@ -45,10 +45,6 @@ footer#ml-status { display: flex; gap: 14px; align-items: center; padding: 3px 1
 #ml-lightbox[hidden] { display: none; }
 #ml-lightbox img { max-width: 100%; max-height: calc(100% - 40px); object-fit: contain; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
 #ml-lightbox .cap { color: #fff; margin-top: 10px; font-size: 14px; }
-#ml-deck { flex: 1; position: relative; min-height: 0; background: #fff; }
-#ml-deck.dark { background: #191919; }
-#ml-deck[hidden], #ml-scroller[hidden] { display: none; }
-#ml-deck .reveal { position: absolute; inset: 0; }
 /* menus (used by later versions) */
 .menu { position: absolute; top: 44px; right: 10px; width: 300px; max-width: calc(100vw - 20px); background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 10px; display: none; z-index: 10; }
 .menu.open { display: block; }

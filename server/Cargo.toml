@@ -1,6 +1,6 @@
 [package]
 name = "markdown-live"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 description = "Markdown language server + live browser preview for the Zed editor (MarkDown Live)"
 license = "MIT"

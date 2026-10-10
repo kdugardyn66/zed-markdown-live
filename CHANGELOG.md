@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 — previews always use your Zed settings
+
+- `markdown-zed preview` (Option-M) prefers Zed's language server, even when an older
+  standalone server still has the file open. Before, a standalone server started once
+  (e.g. while Zed was restarting the language server) kept serving the preview without
+  your settings: "code execution is off", or the system Python instead of `"python"`.
+- The standalone server, the CLI and `doctor` read the `lsp.markdown-live.settings`
+  block from Zed's settings.json (comments and trailing commas allowed);
+  `MARKDOWN_LIVE_SETTINGS` still overrides it. `doctor` shows the Python that will be used.
+
 ## 0.6.0 — 3D molecules, code switch, no slide view
 
 - 3D molecules with Mol* 5.11 (bundled): `@import` of .pdb/.cif/.bcif/.sdf/.mol/.mol2/.xyz/.gro/.pdbqt,

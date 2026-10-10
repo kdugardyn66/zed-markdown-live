@@ -1,7 +1,7 @@
 id = "markdown-live"
 name = "MarkDown Live"
 description = "Live Markdown preview in Chromium that follows the editor: GFM, Mermaid, PlantUML, Graphviz, Vega, Chart.js, KaTeX/MathJax + chemistry, CSV tables, Python code chunks, pictures (HEIC too) and videos, slides, and export to PDF/Word/ODT/HTML/PowerPoint/Impress (Option-M on macOS, Alt-M on Windows/Linux)."
-version = "0.6.0"
+version = "0.6.1"
 schema_version = 1
 authors = ["Kris Dugardyn <kris.dugardyn@dvt-bnl-dimpulse.com>"]
 repository = "https://github.com/your-name/zed-markdown-live"

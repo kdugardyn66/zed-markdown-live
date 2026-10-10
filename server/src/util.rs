@@ -296,6 +296,82 @@ pub fn html_unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// JSON with comments (`//`, `/* */`) and trailing commas → plain JSON (Zed's settings files).
+pub fn jsonc_to_json(text: &str) -> String {
+    let c: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    let mut in_str = false;
+    while i < c.len() {
+        let ch = c[i];
+        if in_str {
+            out.push(ch);
+            if ch == '\\' && i + 1 < c.len() {
+                out.push(c[i + 1]);
+                i += 2;
+                continue;
+            }
+            if ch == '"' {
+                in_str = false;
+            }
+            i += 1;
+            continue;
+        }
+        match ch {
+            '"' => {
+                in_str = true;
+                out.push(ch);
+                i += 1;
+            }
+            '/' if c.get(i + 1) == Some(&'/') => {
+                while i < c.len() && c[i] != '\n' {
+                    i += 1;
+                }
+            }
+            '/' if c.get(i + 1) == Some(&'*') => {
+                i += 2;
+                while i + 1 < c.len() && !(c[i] == '*' && c[i + 1] == '/') {
+                    i += 1;
+                }
+                i += 2;
+            }
+            ',' => {
+                // drop a trailing comma before } or ]
+                let mut j = i + 1;
+                loop {
+                    while j < c.len() && c[j].is_whitespace() {
+                        j += 1;
+                    }
+                    if c.get(j) == Some(&'/') && c.get(j + 1) == Some(&'/') {
+                        while j < c.len() && c[j] != '\n' {
+                            j += 1;
+                        }
+                        continue;
+                    }
+                    if c.get(j) == Some(&'/') && c.get(j + 1) == Some(&'*') {
+                        j += 2;
+                        while j + 1 < c.len() && !(c[j] == '*' && c[j + 1] == '/') {
+                            j += 1;
+                        }
+                        j += 2;
+                        continue;
+                    }
+                    break;
+                }
+                if !matches!(c.get(j), Some('}') | Some(']')) {
+                    out.push(',');
+                }
+                i += 1;
+            }
+            _ => {
+                out.push(ch);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 /// Turns `diagram name.puml` + extension into a file name that doesn't contain separators.
 pub fn sanitize_file_name(name: &str) -> String {
     let cleaned: String = name
@@ -313,6 +389,15 @@ pub fn sanitize_file_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jsonc() {
+        let t = "{\n  // comment\n  \"a\": \"x // not a comment\", /* c */\n  \"b\": [1, 2,],\n  \"c\": {\"d\": true, // x\n },\n}";
+        let v: serde_json::Value = serde_json::from_str(&jsonc_to_json(t)).unwrap();
+        assert_eq!(v["a"], "x // not a comment");
+        assert_eq!(v["b"][1], 2);
+        assert_eq!(v["c"]["d"], true);
+    }
     #[test]
     fn uri_roundtrip() {
         if !cfg!(windows) {

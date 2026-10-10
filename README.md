@@ -28,8 +28,9 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | **0.4.0** | Slides (`<!-- slide -->`, live reveal.js view) and exports: pdf, docx, odt, html, pptx, odp, slide pdf/html |
 | **0.5.0** | Exports replaced by printing (document or one slide per page); shorter Python error messages |
 | **0.6.0** | 3D molecules (Mol*), Graph / Diagram \| Code switch for `hide=true` chunks; on-screen slide view removed |
+| **0.6.1** | The preview always uses your Zed settings (also when served by the standalone server) |
 
-This is **0.6.0**.
+This is **0.6.1**.
 
 ## Install
 

@@ -41,12 +41,28 @@ fn usage() -> ! {
     std::process::exit(2)
 }
 
+/// Settings outside Zed's language server (standalone server, CLI, doctor): the
+/// `lsp.markdown-live.settings` block of Zed's settings.json, then MARKDOWN_LIVE_SETTINGS
+/// on top. So a preview served by the standalone server behaves like the one from Zed
+/// (code execution, Python, PlantUML paths…).
 pub fn env_settings() -> Settings {
-    let v = std::env::var("MARKDOWN_LIVE_SETTINGS")
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .unwrap_or(json!({}));
+    let mut v = zed_settings().unwrap_or(json!({}));
+    if let Some(env) = std::env::var("MARKDOWN_LIVE_SETTINGS").ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+        if let (Some(base), Some(over)) = (v.as_object_mut(), env.as_object()) {
+            for (k, val) in over {
+                base.insert(k.clone(), val.clone());
+            }
+        }
+    }
     Settings::from_json(&v)
+}
+
+/// `lsp.markdown-live.settings` from Zed's settings.json (JSON with comments).
+pub fn zed_settings() -> Option<Value> {
+    let text = std::fs::read_to_string(setup::zed_config_dir().join("settings.json")).ok()?;
+    let v: Value = serde_json::from_str(&util::jsonc_to_json(&text)).ok()?;
+    let s = v.get("lsp")?.get("markdown-live")?.get("settings")?.clone();
+    s.is_object().then_some(s)
 }
 
 fn main() {
@@ -167,14 +183,17 @@ pub fn live_instances() -> Vec<Instance> {
 
 /// The server that has `file` open in the editor, else any LSP server, else any.
 pub fn pick_instance(file: &Path) -> Option<Instance> {
+    // Zed's language server first (it has your settings and the unsaved text), even
+    // when an older standalone server still has the file open.
     let f = file.to_string_lossy().to_string();
     let mut all = live_instances();
-    if let Some(i) = all.iter().position(|i| i.files.contains(&f)) {
-        return Some(all.swap_remove(i));
-    }
-    if let Some(i) = all.iter().position(|i| i.mode == "lsp") {
-        return Some(all.swap_remove(i));
-    }
+    let rank = |i: &Instance| match (i.mode == "lsp", i.files.contains(&f)) {
+        (true, true) => 0,
+        (true, false) => 1,
+        (false, true) => 2,
+        (false, false) => 3,
+    };
+    all.sort_by_key(rank);
     all.into_iter().next()
 }
 

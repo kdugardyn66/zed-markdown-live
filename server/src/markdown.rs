@@ -1200,7 +1200,100 @@ pub fn render(text: &str, ctx: &Ctx) -> Rendered {
     }
     let mut html = String::new();
     let _ = comrak::format_html(root, &opts, &mut html);
+    if slides > 0 {
+        html = wrap_slides(&html);
+    }
     Rendered { html, title, headings, slides }
+}
+
+const SLIDE_BREAK: &str = "<div class=\"ml-slide-break\"";
+
+/// Documents with `<!-- slide -->` markers: each slide in a frame (`.ml-slide`), its
+/// notes under it (`.ml-notes`). Notes are `<aside class="notes">…</aside>` blocks and
+/// everything from a paragraph starting with `Note:` / `Notes:` to the end of the slide.
+/// The content before the first marker is the first slide.
+pub fn wrap_slides(html: &str) -> String {
+    // (marker attributes JSON, slide HTML)
+    let mut parts: Vec<(String, String)> = Vec::new();
+    let mut rest = html;
+    let mut attrs = String::from("{}");
+    while let Some(i) = rest.find(SLIDE_BREAK) {
+        parts.push((attrs.clone(), rest[..i].to_string()));
+        let tail = &rest[i..];
+        let end = tail.find("</div>").map(|e| e + "</div>".len()).unwrap_or(tail.len());
+        let tag = &tail[..end];
+        attrs = tag
+            .split_once("data-slide=\"")
+            .and_then(|(_, r)| r.split_once('"'))
+            .map(|(v, _)| v.replace("&quot;", "\"").replace("&amp;", "&"))
+            .unwrap_or_else(|| "{}".into());
+        rest = tail[end..].trim_start_matches('\n');
+    }
+    parts.push((attrs, rest.to_string()));
+
+    let mut out = String::new();
+    let mut n = 0;
+    for (attrs, body) in parts {
+        if body.trim().is_empty() {
+            continue;
+        }
+        n += 1;
+        let (content, notes) = split_notes(&body);
+        let a: serde_json::Value = serde_json::from_str(&attrs).unwrap_or_default();
+        let mut cls = String::from("ml-slide");
+        if let Some(c) = a.get("class").and_then(|c| c.as_str()) {
+            cls.push(' ');
+            cls.push_str(&escape_html(c));
+        }
+        let mut style = String::new();
+        if let Some(bg) = a.get("data-background-color").and_then(|c| c.as_str()) {
+            style.push_str(&format!(" style=\"background:{}\"", escape_html(bg)));
+        }
+        out.push_str(&format!("<div class=\"ml-slide-wrap\" data-slide-n=\"{n}\">\n<div class=\"{cls}\"{style}>\n{content}<span class=\"ml-slide-num\">{n}</span></div>\n"));
+        if !notes.trim().is_empty() {
+            out.push_str(&format!("<div class=\"ml-notes\"><div class=\"ml-notes-label\">Note:</div>\n{notes}</div>\n"));
+        }
+        out.push_str("</div>\n");
+    }
+    out
+}
+
+/// Splits one slide's HTML into (slide content, notes HTML).
+fn split_notes(body: &str) -> (String, String) {
+    let mut content = String::new();
+    let mut notes = String::new();
+    let mut rest = body;
+    // <aside class="notes">…</aside>
+    while let Some(i) = rest.find("<aside class=\"notes\"") {
+        content.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let open_end = tail.find('>').map(|e| e + 1).unwrap_or(tail.len());
+        let close = tail.find("</aside>").unwrap_or(tail.len());
+        if close > open_end {
+            notes.push_str(&format!("<p>{}</p>\n", tail[open_end..close].trim()));
+        }
+        rest = tail.get(close + "</aside>".len()..).unwrap_or("").trim_start_matches('\n');
+    }
+    content.push_str(rest);
+    // a paragraph starting with "Note:" or "Notes:" and everything after it
+    let mut from = 0;
+    while let Some(p) = content[from..].find("<p") {
+        let i = from + p;
+        let after = &content[i..];
+        let Some(gt) = after.find('>') else { break };
+        let is_p = matches!(after.as_bytes().get(2), Some(b'>') | Some(b' '));
+        let text = &after[gt + 1..];
+        let label = ["Notes:", "Note:", "notes:", "note:"].iter().find(|l| text.starts_with(*l));
+        if let (true, Some(l)) = (is_p, label) {
+            let mut tail = format!("{}{}", &after[..gt + 1], text[l.len()..].trim_start());
+            tail = tail.replacen("<p", "<p", 1);
+            let mut n = tail;
+            n.push_str(&notes);
+            return (content[..i].to_string(), n);
+        }
+        from = i + 2;
+    }
+    (content, notes)
 }
 
 /// Replaces a block node (and its children) by a raw HTML block.
@@ -1217,6 +1310,20 @@ mod tests {
 
     fn ctx(s: &Settings) -> Ctx<'_> {
         Ctx::new(s, std::env::temp_dir().join("t.md"), vec![])
+    }
+
+    #[test]
+    fn slide_notes() {
+        let s = Settings::default();
+        let md = "# One\n\nText\n\nNote:\nSay hello.\n\nAnd more.\n\n<!-- slide -->\n## Two\n\n<aside class=\"notes\">Aside note</aside>\n\nBody\n";
+        let r = render(md, &ctx(&s));
+        assert_eq!(r.html.matches("ml-slide-wrap").count(), 2, "{}", r.html);
+        let first = r.html.split("data-slide-n=\"2\"").next().unwrap();
+        assert!(first.contains("class=\"ml-notes\"") && first.contains("Say hello.") && first.contains("And more."), "{}", first);
+        let slide1 = first.split("class=\"ml-notes\"").next().unwrap();
+        assert!(slide1.contains("Text") && !slide1.contains("Say hello"), "{}", slide1);
+        let second = r.html.split("data-slide-n=\"2\"").nth(1).unwrap();
+        assert!(second.contains("Aside note") && second.contains("Body") && !second.contains("<aside"), "{}", second);
     }
 
     #[test]
@@ -1247,8 +1354,9 @@ mod tests {
         let md = "# One\n\n<!-- slide -->\n## Two\n<!-- slide data-background-color=\"#123\" vertical=true -->\nThree\n";
         let r = render(md, &ctx(&s));
         assert_eq!(r.slides, 2);
-        assert!(r.html.contains("class=\"ml-slide-break\""), "{}", r.html);
-        assert!(r.html.contains("data-background-color"), "{}", r.html);
+        assert_eq!(r.html.matches("class=\"ml-slide-wrap\"").count(), 3, "{}", r.html);
+        assert!(!r.html.contains("ml-slide-break"), "{}", r.html);
+        assert!(r.html.contains("style=\"background:#123\""), "{}", r.html);
         assert!(slide_marker("<!-- slideshow -->").is_none());
     }
 

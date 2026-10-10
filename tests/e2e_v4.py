@@ -8,7 +8,13 @@ def run(page, env, lsp, inst, check, wait_for, api, uri):
     api(inst, "/api/open", {"path": str(doc)})
     ok = wait_for(lambda: page.locator("h1", has_text="Slides and printing").count() == 1, 10)
     check("v4 document shown", ok)
-    check("slide breaks in the document view", page.locator(".ml-slide-break").count() == 5)
+    check("each slide in a frame (6)", page.locator(".ml-slide-wrap > .ml-slide").count() == 6, page.locator(".ml-slide").count())
+    check("slide numbers", page.locator(".ml-slide .ml-slide-num").all_inner_texts() == [str(i) for i in range(1, 7)])
+    notes = page.locator(".ml-slide-wrap .ml-notes")
+    check("notes under their slide (aside + Note: paragraph)", notes.count() == 2 and "Say hello first." in notes.nth(0).inner_text() and "Euler" in notes.nth(1).inner_text(), notes.all_inner_texts())
+    check("notes start with 'Note:' on its own line", notes.nth(0).locator(".ml-notes-label").inner_text() == "Note:")
+    check("Note: paragraph is not in the slide", "Euler" not in page.locator(".ml-slide").nth(2).inner_text())
+    check("slide background attribute", "rgb(255, 248, 197)" in page.locator(".ml-slide").nth(4).evaluate("e => getComputedStyle(e).backgroundColor"))
     check("no slide view (removed in 0.6.0)", page.locator("#ml-btn-slides").count() == 0 and page.locator("#ml-deck").count() == 0)
     page.keyboard.press("p")
     check("P does nothing", wait_for(lambda: False, 1) is None and page.locator("#ml-deck").count() == 0)
@@ -24,8 +30,25 @@ def run(page, env, lsp, inst, check, wait_for, api, uri):
     check("print: video left out", fr.locator("video").count() == 0 and "a clip" in body)
     check("print: light theme", fr.locator("html[data-theme='light']").count() == 1)
     check("print: no toolbar in the copy", fr.locator("#ml-bar").count() == 0)
-    check("print: slide markers are page breaks", fr.locator(".ml-slide-break").count() == 5)
-    check("print: speaker notes left out", fr.locator("aside.notes").first.is_hidden())
+    check("print: slides in frames with their notes", fr.locator(".ml-slide").count() == 6 and fr.locator(".ml-notes").count() == 2)
+    check("print: notes printed", fr.locator(".ml-notes").first.is_visible())
+    # lay the printed copy out on paper: portrait = slide + notes per page, landscape = notes on their own page
+    html = page.evaluate("document.getElementById('ml-print-frame').srcdoc")
+    p2 = page.context.browser.new_page()
+    p2.goto(page.url, wait_until="commit")
+    p2.evaluate("h => { document.open(); document.write(h); document.close(); }", html)
+    p2.wait_for_load_state("load")
+    wait_for(lambda: False, 1)
+    import subprocess, tempfile, os
+    def pages(**kw):
+        f = tempfile.mktemp(suffix=".pdf")
+        p2.pdf(path=f, format="A4", **kw)
+        out = subprocess.run(["pdfinfo", f], capture_output=True, text=True).stdout
+        os.unlink(f)
+        return next((int(l.split()[1]) for l in out.splitlines() if l.startswith("Pages:")), 0)
+    check("print portrait: one page per slide, notes under it (6 pages)", pages() == 6, pages())
+    check("print landscape: notes on the next page (6 + 2 pages)", pages(landscape=True) == 8, pages(landscape=True))
+    p2.close()
 
     # print from Zed (code action): the open preview prints
     page.evaluate("document.getElementById('ml-print-frame')?.remove()")

@@ -29,8 +29,9 @@ The repository has one tag per version (`git checkout 0.1.0` …):
 | **0.5.0** | Exports replaced by printing (document or one slide per page); shorter Python error messages |
 | **0.6.0** | 3D molecules (Mol*), Graph / Diagram \| Code switch for `hide=true` chunks; on-screen slide view removed |
 | **0.6.1** | The preview always uses your Zed settings (also when served by the standalone server) |
+| **0.7.0** | Slides in frames with notes; printing: portrait = slide + notes, landscape = notes on the next page |
 
-This is **0.6.1**.
+This is **0.7.0**.
 
 ## Install
 
@@ -154,12 +155,37 @@ See `examples/v2-diagrams.md`.
 
 See `examples/v6-molecules.md`.
 
-## Page breaks with `<!-- slide -->`
+## Slides and notes (0.7.0)
 
-MPE's slide marker (**Option-Shift-N** in Zed inserts one, or Cmd-. → "MarkDown Live:
-Insert new slide") shows as a dashed line in the preview and starts a new page when you
-print. Speaker notes (`<aside class="notes">…</aside>`) show in the preview and are never
-printed. (0.4.0–0.5.0 also had a reveal.js slide view; it was removed in 0.6.0.)
+When a document has MPE slide markers (**Option-Shift-N** in Zed inserts one, or Cmd-. →
+"MarkDown Live: Insert new slide"), every slide is shown in a **frame** (16:9, it grows
+when the content is taller), numbered, with its **notes** under it:
+
+```markdown
+# First slide
+
+Text on the slide.
+
+Note:
+What to say about the first slide.
+Everything from "Note:" to the next marker is the note.
+
+<!-- slide -->
+## Second slide
+
+<aside class="notes">Notes can also be written like this (reveal.js / MPE style).</aside>
+
+<!-- slide class="center" data-background-color="#fff8c5" -->
+## A slide with a background colour
+```
+
+The content before the first marker is the first slide. (0.4.0–0.5.0 had a reveal.js
+slide view; it was removed in 0.6.0.)
+
+**Printing slides** (pick the orientation in the print dialog):
+
+- **Portrait**: one slide per page, in its frame, with "Note:" and the notes under it.
+- **Landscape**: the slide fills the page; its notes are printed on the next page.
 
 ## Print
 
@@ -168,7 +194,7 @@ Zed, use Cmd-. → "MarkDown Live: Print", or the CLI: `markdown-zed print notes
 The browser's print dialog opens; choose a printer, or **Save as PDF** for a PDF file.
 
 - The document as the preview shows it, always in the light theme, without the toolbar.
-  `<!-- slide -->` markers become page breaks; speaker notes are left out.
+- Slides: one per page with their notes (see "Slides and notes" for portrait vs landscape).
 - **Videos are left out** (a "▶ video: …" line marks where they were). Chart.js and
   Plotly charts and 3D molecules are printed as pictures; `hide=true` chunks print their result.
 - From Zed or the CLI, the preview opens first when it isn't open yet.

@@ -3,10 +3,12 @@ title: Slides and printing
 ---
 # Slides and printing
 
-Made with **MarkDown Live**. Each `<!-- slide -->` marker starts a new page when you
-print (**Cmd-P**); **Option-Shift-N** in Zed inserts a new marker.
+Made with **MarkDown Live**. Each `<!-- slide -->` marker starts a new slide
+(**Option-Shift-N** in Zed inserts one). Print with **Cmd-P**: in portrait every page
+has a slide with its notes under it, in landscape the notes go on the next page.
 
-<aside class="notes">Say hello first.</aside>
+Note:
+Say hello first. Everything after "Note:" until the next slide is the note.
 
 <!-- slide -->
 ## A diagram

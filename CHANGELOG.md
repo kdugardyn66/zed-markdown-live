@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 — slides in frames, with notes
+
+- Documents with `<!-- slide -->` markers show every slide in a numbered 16:9 frame
+  (grows with its content), with the slide's notes under it. Notes: a paragraph starting with
+  `Note:` / `Notes:` and everything after it in the slide, or `<aside class="notes">`.
+  The content before the first marker is the first slide. `class` and
+  `data-background-color` on a marker style the frame.
+- Printing: portrait = one slide per page with "Note:" and the notes under the frame;
+  landscape = the slide fills the page and its notes go on the next page.
+
 ## 0.6.1 — previews always use your Zed settings
 
 - `markdown-zed preview` (Option-M) prefers Zed's language server, even when an older
